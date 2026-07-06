@@ -2,6 +2,14 @@ using System.Net;
 using LedNetwork.Core.DesignProtocol;
 using LedNetwork.Core.Routing;
 using LedNetwork.Core.Transport;
+using LedNetwork.Host;
+
+// Mode auto-test : « dotnet run --project src/LedNetwork.Host -- --test-artdmx »
+// Vérifie ArtDmxPacket (Serialize/TryParse) sans démarrer l'outil de routage.
+if (args.Contains("--test-artdmx"))
+{
+    return ArtDmxSelfTest.Run();
+}
 
 // ---------------------------------------------------------------------------
 // Démonstration de l'outil de routage (« Outil de routage » du schéma).
