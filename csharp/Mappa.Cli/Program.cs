@@ -38,6 +38,7 @@ internal static class Program
             case "scan": return Scan(args);
             case "pixel" when args.Length >= 2: return Pixel(args);
             case "anim" when args.Length >= 3: return Anim(args);
+            case "image" when args.Length >= 2: return ImageCmd(args);
             default: PrintUsage(); return 1;
         }
     }
@@ -99,6 +100,24 @@ internal static class Program
         Console.WriteLine("    --speed <f>        facteur de vitesse (defaut: 1.0 ; 2.0 = 2x plus rapide).");
         Console.WriteLine();
         Console.WriteLine("  Exemple : mappa anim ../configs/ecran.json \"CLAUDE\" --color 0,200,255");
+        Console.WriteLine();
+        Console.WriteLine("image : affiche une image (fichier PPM) ou un dessin de demo sur le mur.");
+        Console.WriteLine("  Usage : mappa image <config.json> [--file x.ppm | --demo] [options]");
+        Console.WriteLine("  Options :");
+        Console.WriteLine("    --file <x.ppm>     image a afficher (format PPM P3/P6).");
+        Console.WriteLine("    --demo             dessine un motif genere par code (degrade + cercle).");
+        Console.WriteLine("    --ip <adresse>     force l'IP du controleur.");
+        Console.WriteLine("    --size <n>         cote max de l'image (defaut: 96 ; ratio conserve, centree).");
+        Console.WriteLine("    --stretch          remplit tout le mur 128x128 (deforme l'image).");
+        Console.WriteLine("    --brightness <f>   intensite 0..1 (defaut: 0.35 ; les LED sont tres vives).");
+        Console.WriteLine("    --flip-x/--flip-y  inverse l'axe.");
+        Console.WriteLine("    --keep-black       affiche aussi les pixels noirs (defaut: ignores).");
+        Console.WriteLine("    --preview          apercu ASCII (niveaux de gris), sans envoi.");
+        Console.WriteLine("    --once             envoie une seule frame.");
+        Console.WriteLine();
+        Console.WriteLine("  Convertir une image en PPM : magick photo.png -resize 128x128 photo.ppm");
+        Console.WriteLine("  Exemple : mappa image ../configs/ecran.json --file photo.ppm");
+        Console.WriteLine("  Exemple : mappa image ../configs/ecran.json --demo");
     }
 
     private static string ResolveConfigsDir()
@@ -313,13 +332,7 @@ internal static class Program
                 case "--frames" when i + 1 < args.Length: frames = int.Parse(args[++i]); break;
                 case "--once": once = true; break;
                 case "--color" when i + 1 < args.Length:
-                    var parts = args[++i].Split(',');
-                    if (parts.Length != 3)
-                    {
-                        Console.Error.WriteLine("--color attend r,g,b (ex: 255,0,0)");
-                        return 1;
-                    }
-                    r = byte.Parse(parts[0]); g = byte.Parse(parts[1]); b = byte.Parse(parts[2]);
+                    if (!TryParseColor(args[++i], out r, out g, out b)) return 1;
                     break;
                 default:
                     Console.Error.WriteLine($"Option inconnue : {args[i]}");
@@ -327,23 +340,13 @@ internal static class Program
             }
         }
 
-        if (!File.Exists(configPath))
-        {
-            Console.Error.WriteLine($"Config introuvable : {configPath}");
-            return 1;
-        }
-
-        var config = Persistence.LoadConfig(configPath);
+        var config = LoadConfigWithIp(configPath, overrideIp);
+        if (config == null) return 1;
         var problems = config.Validate();
         if (problems.Count > 0)
         {
             Console.Error.WriteLine("Config invalide : " + string.Join("; ", problems));
             return 1;
-        }
-
-        if (overrideIp != null)
-        {
-            foreach (var c in config.Controllers) c.Ip = overrideIp;
         }
 
         var plan = new RoutingPlan(config);
@@ -436,9 +439,7 @@ internal static class Program
                 case "--port" when i + 1 < args.Length: port = int.Parse(args[++i]); break;
                 case "--step": step = true; break;
                 case "--color" when i + 1 < args.Length:
-                    var parts = args[++i].Split(',');
-                    if (parts.Length != 3) { Console.Error.WriteLine("--color attend r,g,b"); return 1; }
-                    r = byte.Parse(parts[0]); g = byte.Parse(parts[1]); b = byte.Parse(parts[2]);
+                    if (!TryParseColor(args[++i], out r, out g, out b)) return 1;
                     break;
                 default: Console.Error.WriteLine($"Option inconnue : {args[i]}"); return 1;
             }
@@ -549,25 +550,14 @@ internal static class Program
                 case "--preview": preview = true; break;
                 case "--once": once = true; break;
                 case "--color" when i + 1 < args.Length:
-                    var parts = args[++i].Split(',');
-                    if (parts.Length != 3) { Console.Error.WriteLine("--color attend r,g,b"); return 1; }
-                    r = byte.Parse(parts[0]); g = byte.Parse(parts[1]); b = byte.Parse(parts[2]);
+                    if (!TryParseColor(args[++i], out r, out g, out b)) return 1;
                     break;
                 default: Console.Error.WriteLine($"Option inconnue : {args[i]}"); return 1;
             }
         }
 
-        if (!File.Exists(configPath))
-        {
-            Console.Error.WriteLine($"Config introuvable : {configPath}");
-            return 1;
-        }
-
-        var config = Persistence.LoadConfig(configPath);
-        if (overrideIp != null)
-        {
-            foreach (var c in config.Controllers) c.Ip = overrideIp;
-        }
+        var config = LoadConfigWithIp(configPath, overrideIp);
+        if (config == null) return 1;
 
         var plan = new RoutingPlan(config);
         var state = State.FromConfig(config);
@@ -597,22 +587,8 @@ internal static class Program
             return 0;
         }
 
-        int periodMs = hz > 0 ? Math.Max(1, 1000 / hz) : 25;
-        bool running = true;
-        Console.CancelKeyPress += (_, e) => { e.Cancel = true; running = false; };
-        Console.WriteLine($"Envoi en boucle a {hz} Hz vers {string.Join(", ", config.Controllers.ConvertAll(c => c.Ip))} (Ctrl+C pour arreter)...");
-        while (running)
-        {
-            sender.SendPlan(config, plan.Render(state));
-            System.Threading.Thread.Sleep(periodMs);
-        }
-        state.Clear();
-        for (int i = 0; i < 3; i++)
-        {
-            sender.SendPlan(config, plan.Render(state));
-            System.Threading.Thread.Sleep(periodMs);
-        }
-        Console.WriteLine("\nArrete. LEDs eteintes.");
+        RunRenderLoop(config, plan, state, sender, hz,
+            label: $"Envoi en boucle a {hz} Hz vers {string.Join(", ", config.Controllers.ConvertAll(c => c.Ip))} (Ctrl+C pour arreter)...");
         return 0;
     }
 
@@ -638,23 +614,14 @@ internal static class Program
                 case "--y" when i + 1 < args.Length: y = int.Parse(args[++i]); break;
                 case "--hz" when i + 1 < args.Length: hz = int.Parse(args[++i]); break;
                 case "--color" when i + 1 < args.Length:
-                    var parts = args[++i].Split(',');
-                    if (parts.Length != 3) { Console.Error.WriteLine("--color attend r,g,b"); return 1; }
-                    r = byte.Parse(parts[0]); g = byte.Parse(parts[1]); b = byte.Parse(parts[2]);
+                    if (!TryParseColor(args[++i], out r, out g, out b)) return 1;
                     break;
                 default: Console.Error.WriteLine($"Option inconnue : {args[i]}"); return 1;
             }
         }
 
-        if (!File.Exists(configPath))
-        {
-            Console.Error.WriteLine($"Config introuvable : {configPath}");
-            return 1;
-        }
-
-        var config = Persistence.LoadConfig(configPath);
-        if (overrideIp != null)
-            foreach (var c in config.Controllers) c.Ip = overrideIp;
+        var config = LoadConfigWithIp(configPath, overrideIp);
+        if (config == null) return 1;
 
         var plan = new RoutingPlan(config);
         var state = State.FromConfig(config);
@@ -669,22 +636,8 @@ internal static class Program
         state.SetRgb(id, r, g, b);
 
         using var sender = new ArtNetSender();
-        int periodMs = hz > 0 ? Math.Max(1, 1000 / hz) : 25;
-        bool running = true;
-        Console.CancelKeyPress += (_, e) => { e.Cancel = true; running = false; };
-        Console.WriteLine($"Envoi pixel en RVB=({r},{g},{b}) (Ctrl+C pour arreter)...");
-        while (running)
-        {
-            sender.SendPlan(config, plan.Render(state));
-            System.Threading.Thread.Sleep(periodMs);
-        }
-        state.Clear();
-        for (int i = 0; i < 3; i++)
-        {
-            sender.SendPlan(config, plan.Render(state));
-            System.Threading.Thread.Sleep(periodMs);
-        }
-        Console.WriteLine("\nArrete. LED eteinte.");
+        RunRenderLoop(config, plan, state, sender, hz,
+            label: $"Envoi pixel en RVB=({r},{g},{b}) (Ctrl+C pour arreter)...");
         return 0;
     }
 
@@ -714,23 +667,14 @@ internal static class Program
                 case "--loops" when i + 1 < args.Length: loops = int.Parse(args[++i]); break;
                 case "--speed" when i + 1 < args.Length: speed = double.Parse(args[++i], System.Globalization.CultureInfo.InvariantCulture); break;
                 case "--color" when i + 1 < args.Length:
-                    var parts = args[++i].Split(',');
-                    if (parts.Length != 3) { Console.Error.WriteLine("--color attend r,g,b"); return 1; }
-                    r = byte.Parse(parts[0]); g = byte.Parse(parts[1]); b = byte.Parse(parts[2]);
+                    if (!TryParseColor(args[++i], out r, out g, out b)) return 1;
                     break;
                 default: Console.Error.WriteLine($"Option inconnue : {args[i]}"); return 1;
             }
         }
 
-        if (!File.Exists(configPath))
-        {
-            Console.Error.WriteLine($"Config introuvable : {configPath}");
-            return 1;
-        }
-
-        var config = Persistence.LoadConfig(configPath);
-        if (overrideIp != null)
-            foreach (var c in config.Controllers) c.Ip = overrideIp;
+        var config = LoadConfigWithIp(configPath, overrideIp);
+        if (config == null) return 1;
 
         var plan = new RoutingPlan(config);
         var state = State.FromConfig(config);
@@ -828,6 +772,190 @@ internal static class Program
         return 0;
     }
 
+    // ------------------------------------------------------------------ //
+    // image : affiche une image PPM (ou un dessin de demo) sur le mur.
+    // ------------------------------------------------------------------ //
+    private static int ImageCmd(string[] args)
+    {
+        string configPath = args[1];
+        string? file = null;
+        string? overrideIp = null;
+        bool demo = false, preview = false, once = false, keepBlack = false;
+        bool flipX = false, flipY = false;
+        bool stretch = false;                 // deformer pour remplir (sinon ratio conserve)
+        int box = 96;                         // cote max de la zone d'affichage (defaut < mur -> plus net)
+        double brightness = 0.35;             // intensite (les LED sont tres lumineuses)
+        const int cols = 128, rows = 128;
+        int hz = 40;
+
+        for (int i = 2; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--file" when i + 1 < args.Length: file = args[++i]; break;
+                case "--ip" when i + 1 < args.Length: overrideIp = args[++i]; break;
+                case "--hz" when i + 1 < args.Length: hz = int.Parse(args[++i]); break;
+                case "--demo": demo = true; break;
+                case "--preview": preview = true; break;
+                case "--once": once = true; break;
+                case "--keep-black": keepBlack = true; break;
+                case "--flip-x": flipX = true; break;
+                case "--flip-y": flipY = true; break;
+                case "--stretch": stretch = true; break;
+                case "--size" when i + 1 < args.Length: box = int.Parse(args[++i]); break;
+                case "--brightness" when i + 1 < args.Length:
+                    brightness = double.Parse(args[++i], System.Globalization.CultureInfo.InvariantCulture);
+                    break;
+                default: Console.Error.WriteLine($"Option inconnue : {args[i]}"); return 1;
+            }
+        }
+
+        if (file == null && !demo)
+        {
+            Console.Error.WriteLine("Precise --file <x.ppm> ou --demo.");
+            return 1;
+        }
+
+        var config = LoadConfigWithIp(configPath, overrideIp);
+        if (config == null) return 1;
+
+        ImageArt img;
+        if (demo)
+        {
+            // Motif genere par code : degrade + cercle + croix.
+            img = new ImageArt(cols, rows);
+            img.GradientVertical(0, 0, 80, 0, 120, 255);
+            img.Circle(cols / 2, rows / 2, 40, 255, 200, 0, filled: true);
+            img.Circle(cols / 2, rows / 2, 40, 255, 255, 255, filled: false);
+            img.Line(0, 0, cols - 1, rows - 1, 255, 0, 0);
+            img.Line(0, rows - 1, cols - 1, 0, 0, 255, 0);
+        }
+        else
+        {
+            if (!File.Exists(file))
+            {
+                Console.Error.WriteLine($"Image introuvable : {file}");
+                return 1;
+            }
+            try { img = ImageArt.LoadPpm(file!); }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Lecture PPM impossible : {ex.Message}");
+                return 1;
+            }
+        }
+
+        // Calcule la taille cible : par defaut on garde le ratio de l'image et on
+        // la fait tenir dans un carre "box" (< mur => image plus petite, plus nette),
+        // centree sur le mur. --stretch force le remplissage complet (deforme).
+        box = Math.Max(1, Math.Min(box, Math.Min(cols, rows)));
+        int fitW, fitH;
+        if (stretch)
+        {
+            fitW = cols; fitH = rows;
+        }
+        else
+        {
+            double ar = (double)img.Width / img.Height;
+            if (ar >= 1.0) { fitW = box; fitH = Math.Max(1, (int)(box / ar)); }
+            else { fitH = box; fitW = Math.Max(1, (int)(box * ar)); }
+        }
+        int originX = (cols - fitW) / 2;
+        int originY = (rows - fitH) / 2;
+
+        var plan = new RoutingPlan(config);
+        var state = State.FromConfig(config);
+        int lit = img.BlitToState(state, originX, originY, fitW, fitH, cols, rows,
+            flipX: flipX, flipY: flipY, skipBlack: !keepBlack, brightness: brightness);
+
+        Console.WriteLine($"Image    : {(demo ? "(demo generee)" : file)} {img.Width}x{img.Height} -> {fitW}x{fitH} @ ({originX},{originY})");
+        Console.WriteLine($"Intensite: {brightness:P0}");
+        Console.WriteLine($"Pixels   : {lit} LED(s) allumee(s)");
+        if (lit == 0)
+        {
+            Console.Error.WriteLine("Aucun pixel allume (image toute noire, ou hors mur).");
+        }
+
+        if (preview)
+        {
+            PreviewAscii(state, cols, rows);
+            return 0;
+        }
+
+        using var sender = new ArtNetSender();
+        if (once)
+        {
+            sender.SendPlan(config, plan.Render(state));
+            Console.WriteLine("1 frame envoyee.");
+            return 0;
+        }
+        RunRenderLoop(config, plan, state, sender, hz,
+            label: $"Envoi image en boucle a {hz} Hz (Ctrl+C pour arreter)...");
+        return 0;
+    }
+
+    // ------------------------------------------------------------------ //
+    // Helpers partages par les commandes d'envoi (send/text/pixel/anim/scan).
+    // ------------------------------------------------------------------ //
+
+    /// <summary>Parse "r,g,b" (0-255). Affiche une erreur et renvoie false si invalide.</summary>
+    private static bool TryParseColor(string value, out byte r, out byte g, out byte b)
+    {
+        r = g = b = 0;
+        var parts = value.Split(',');
+        if (parts.Length != 3 ||
+            !byte.TryParse(parts[0], out r) ||
+            !byte.TryParse(parts[1], out g) ||
+            !byte.TryParse(parts[2], out b))
+        {
+            Console.Error.WriteLine("--color attend r,g,b (ex: 255,0,0)");
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>Verifie l'existence du fichier, charge la config, applique un override d'IP.</summary>
+    private static Config? LoadConfigWithIp(string path, string? overrideIp)
+    {
+        if (!File.Exists(path))
+        {
+            Console.Error.WriteLine($"Config introuvable : {path}");
+            return null;
+        }
+        var config = Persistence.LoadConfig(path);
+        if (overrideIp != null)
+            foreach (var c in config.Controllers) c.Ip = overrideIp;
+        return config;
+    }
+
+    /// <summary>
+    /// Boucle d'envoi ArtNet (state fige) a <paramref name="hz"/> Hz jusqu'a
+    /// Ctrl+C, puis extinction propre (quelques frames noires).
+    /// </summary>
+    private static void RunRenderLoop(
+        Config config, RoutingPlan plan, State state, ArtNetSender sender,
+        int hz, string? label = null)
+    {
+        int periodMs = hz > 0 ? Math.Max(1, 1000 / hz) : 25;
+        bool running = true;
+        Console.CancelKeyPress += (_, e) => { e.Cancel = true; running = false; };
+        if (label != null) Console.WriteLine(label);
+
+        while (running)
+        {
+            sender.SendPlan(config, plan.Render(state));
+            System.Threading.Thread.Sleep(periodMs);
+        }
+
+        state.Clear();
+        for (int i = 0; i < 3; i++)
+        {
+            sender.SendPlan(config, plan.Render(state));
+            System.Threading.Thread.Sleep(periodMs);
+        }
+        Console.WriteLine("\nArrete. LEDs eteintes.");
+    }
+
     private static int CountLines(string message, int cols, int originX)
     {
         int advance = Text.GlyphWidth + 1;
@@ -846,8 +974,11 @@ internal static class Program
         return lines;
     }
 
-    // Apercu ASCII : '#' = LED allumee, '.' = eteinte. Aide a valider le rendu
-    // avant de l'envoyer sur le vrai panneau (orientation, retour a la ligne...).
+    // Apercu ASCII : rampe de luminosite (' ' = eteint -> '@' = tres lumineux).
+    // Aide a valider le rendu (texte comme image) avant l'envoi : orientation,
+    // cadrage, retour a la ligne...
+    private static readonly char[] LumRamp = { ' ', '.', ':', '-', '=', '+', '*', '#', '%', '@' };
+
     private static void PreviewAscii(State state, int cols, int rowsToShow)
     {
         for (int row = 0; row < rowsToShow; row++)
@@ -856,9 +987,15 @@ internal static class Program
             for (int col = 0; col < cols; col++)
             {
                 int id = Text.WallEntityId(col, row, cols);
-                bool on = id >= 0 && state.Contains(id) &&
-                          !(state.Get(id).R == 0 && state.Get(id).G == 0 && state.Get(id).B == 0);
-                sb.Append(on ? '#' : '.');
+                int lum = 0;
+                if (id >= 0 && state.Contains(id))
+                {
+                    var c = state.Get(id);
+                    // luminance perceptuelle approximative (0-255)
+                    lum = (c.R * 30 + c.G * 59 + c.B * 11) / 100;
+                }
+                int idx = lum * (LumRamp.Length - 1) / 255;
+                sb.Append(LumRamp[idx]);
             }
             Console.WriteLine(sb.ToString());
         }
