@@ -21,75 +21,29 @@ namespace Mappa
         public const int GlyphHeight = 5;
 
         /// <summary>
-        /// Convertit une position logique (col, row) du mur Glassworks en ID
-        /// d'entite, d'apres l'adressage reel (fichier Ecran.xlsx / doc).
-        ///
-        /// Geometrie du mur :
-        ///  - 64 bandes physiques cote a cote (axe X), 16 par controleur.
-        ///  - Entite de base d'une bande : 100 + 300*(band%16) + 5000*(band/16).
-        ///  - Chaque bande a 259 LED parcourues dans l'ordre :
-        ///      index 0            : LED de fixation (bas), invisible
-        ///      index 1..128       : montee, 128 LED visibles
-        ///      index 129          : LED de fixation (haut), invisible
-        ///      index 130..257     : descente, 128 LED visibles
-        ///      index 258          : LED de fixation (bas), invisible
-        ///  - La montee et la descente forment deux colonnes logiques adjacentes,
-        ///    donc 64 bandes x 2 = 128 colonnes logiques (mur 128x128).
-        ///
-        /// Convention (calibrable via les flips au niveau DrawString) :
-        ///  - col logique 0..127 ; band = col / 2.
-        ///  - col paire   = trait montant   (index 1..128), y0 en bas.
-        ///  - col impaire = trait descendant (index 130..257).
-        ///  - row 0 = haut du mur.
-        /// Retourne -1 si hors du mur ou sur une LED de fixation.
+        /// Convertit une position logique (col, row) en ID d'entite, via la
+        /// geometrie fournie (ou <see cref="WallGeometry.Default"/> si null).
+        /// row 0 = haut du mur. Retourne -1 si hors du mur / LED de fixation.
         /// </summary>
-        public static int WallEntityId(
-            int col, int row,
-            int columns = 128, int ledsPerColumn = 128,
-            int bandsPerController = 16, int bandStride = 300,
-            int controllerOffset = 5000, int entityBase = 100,
-            int ledsPerBand = 259)
+        public static int WallEntityId(int col, int row, WallGeometry? geo = null)
         {
-            if (col < 0 || col >= columns || row < 0 || row >= ledsPerColumn) return -1;
-
-            int band = col / 2;
-            bool descending = (col % 2) != 0;
-            int bandInCtrl = band % bandsPerController;
-            int controller = band / bandsPerController;
-            int baseEntity = entityBase + bandInCtrl * bandStride + controller * controllerOffset;
-
-            // row 0 = haut du mur -> hauteur depuis le bas = (ledsPerColumn-1-row).
-            int heightFromBottom = (ledsPerColumn - 1) - row;
-
-            int ledIndex;
-            if (!descending)
-            {
-                // Montee : index 1 (bas) .. 128 (haut).
-                ledIndex = 1 + heightFromBottom;         // 1..128
-            }
-            else
-            {
-                // Descente : index 130 (haut) .. 257 (bas).
-                ledIndex = 130 + row;                    // haut(row0)->130, bas(row127)->257
-            }
-            // baseEntity correspond a l'index 0 (fixation). L'entite = base + ledIndex.
-            return baseEntity + ledIndex;
+            return (geo ?? WallGeometry.Default).EntityId(col, row);
         }
 
         /// <summary>
         /// Ecrit une chaine dans le state a partir du coin (originX, originY),
-        /// avec retour a la ligne automatique pour tenir dans <paramref name="maxCols"/>.
-        /// Renvoie le nombre de pixels reellement allumes (utile pour verifier
-        /// que le texte tombe bien dans le mur).
+        /// avec retour a la ligne automatique pour tenir dans la largeur du mur.
+        /// Renvoie le nombre de pixels reellement allumes.
         /// </summary>
         public static int DrawString(
             State state, string text,
             int originX = 0, int originY = 0,
             int r = 255, int g = 255, int b = 255,
-            int columns = 128, int ledsPerColumn = 128,
+            WallGeometry? geo = null,
             int letterSpacing = 1, int lineSpacing = 1,
             bool flipX = false, bool flipY = false)
         {
+            geo ??= WallGeometry.Default;
             int advance = GlyphWidth + letterSpacing;
             int lineStep = GlyphHeight + lineSpacing;
             int cursorX = originX;
@@ -107,16 +61,13 @@ namespace Mappa
                 }
 
                 // Retour a la ligne auto si le prochain glyphe deborde du mur.
-                if (cursorX + GlyphWidth > columns && cursorX > originX)
+                if (cursorX + GlyphWidth > geo.Columns && cursorX > originX)
                 {
                     cursorX = originX;
                     cursorY += lineStep;
                 }
 
-                litPixels += DrawGlyph(
-                    state, ch, cursorX, cursorY, r, g, b,
-                    columns, ledsPerColumn, flipX, flipY);
-
+                litPixels += DrawGlyph(state, ch, cursorX, cursorY, r, g, b, geo, flipX, flipY);
                 cursorX += advance;
             }
             return litPixels;
@@ -126,7 +77,7 @@ namespace Mappa
         public static int DrawGlyph(
             State state, char ch, int x, int y,
             int r, int g, int b,
-            int columns, int ledsPerColumn,
+            WallGeometry geo,
             bool flipX, bool flipY)
         {
             if (!Font.TryGetValue(char.ToUpperInvariant(ch), out byte[]? rows)) return 0;
@@ -140,9 +91,9 @@ namespace Mappa
                     bool on = (lineBits & (1 << (GlyphWidth - 1 - gx))) != 0;
                     if (!on) continue;
 
-                    int px = flipX ? (columns - 1 - (x + gx)) : (x + gx);
-                    int py = flipY ? (ledsPerColumn - 1 - (y + gy)) : (y + gy);
-                    int id = WallEntityId(px, py, columns, ledsPerColumn);
+                    int px = flipX ? (geo.Columns - 1 - (x + gx)) : (x + gx);
+                    int py = flipY ? (geo.Rows - 1 - (y + gy)) : (y + gy);
+                    int id = geo.EntityId(px, py);
                     if (id < 0) continue;
                     if (state.Contains(id))
                     {
@@ -176,9 +127,10 @@ namespace Mappa
             int originX, int originY,
             int r, int g, int b,
             int scale = 1, int letterSpacing = 1,
-            int columns = 128, int ledsPerColumn = 128,
+            WallGeometry? geo = null,
             bool flipX = false, bool flipY = false)
         {
+            geo ??= WallGeometry.Default;
             if (scale < 1) scale = 1;
             int lit = 0;
             int cx = originX;
@@ -200,9 +152,9 @@ namespace Mappa
                                 {
                                     int x = cx + gx * scale + sx;
                                     int y = originY + gy * scale + sy;
-                                    int px = flipX ? (columns - 1 - x) : x;
-                                    int py = flipY ? (ledsPerColumn - 1 - y) : y;
-                                    int id = WallEntityId(px, py, columns, ledsPerColumn);
+                                    int px = flipX ? (geo.Columns - 1 - x) : x;
+                                    int py = flipY ? (geo.Rows - 1 - y) : y;
+                                    int id = geo.EntityId(px, py);
                                     if (id < 0 || !state.Contains(id)) continue;
                                     state.SetRgb(id, r, g, b);
                                     lit++;

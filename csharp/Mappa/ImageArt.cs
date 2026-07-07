@@ -118,11 +118,12 @@ namespace Mappa
             State state,
             int originX = 0, int originY = 0,
             int targetW = 128, int targetH = 128,
-            int wallCols = 128, int wallRows = 128,
+            WallGeometry? geo = null,
             bool flipX = false, bool flipY = false,
             bool skipBlack = true,
             double brightness = 1.0)
         {
+            geo ??= WallGeometry.Default;
             if (brightness < 0) brightness = 0;
             int lit = 0;
             for (int ty = 0; ty < targetH; ty++)
@@ -142,9 +143,9 @@ namespace Mappa
 
                     int wx = originX + tx;
                     int wy = originY + ty;
-                    int px = flipX ? (wallCols - 1 - wx) : wx;
-                    int py = flipY ? (wallRows - 1 - wy) : wy;
-                    int id = Text.WallEntityId(px, py, wallCols, wallRows);
+                    int px = flipX ? (geo.Columns - 1 - wx) : wx;
+                    int py = flipY ? (geo.Rows - 1 - wy) : wy;
+                    int id = geo.EntityId(px, py);
                     if (id < 0 || !state.Contains(id)) continue;
                     state.SetRgb(id, rr, gg, bb);
                     lit++;

@@ -38,7 +38,7 @@ Le mur (fourni par le Groupe LAPS, doc : <https://learn.glassworks.tech/led/arch
 
 ---
 
-## 2. Préparation (AVEC Internet, sur ton Wi-Fi normal)
+## 2. Préparation (AVEC Internet, sur Wi-Fi normal)
 
 Tout se fait **côté Windows / PowerShell** (le Wi-Fi appartient à Windows ; depuis
 WSL2 l'UDP local passe mal à cause du NAT).
@@ -184,12 +184,56 @@ entité        = entitéDeBase + ledIndex
 
 ---
 
-## 7. Régénérer `configs/ecran.json`
+## 7. Générer une config depuis un Excel (import dynamique)
 
-La config a été générée à partir du fichier officiel `Ecran.xlsx` (mapping eHuB :
-`entity_start`, `entity_end`, `ArtNet IP`, `ArtNet Universe`). Chaque univers reçoit
-un `index` global unique **et** un `artnet_universe` local (0-31). Les lyres et le
-projecteur (univers 33) sont exclus car l'Excel ne fournit pas leur `channel_start`.
+Les fichiers JSON de `configs/` ne sont **pas écrits à la main** : ils sont générés
+à partir d'un Excel d'adressage (format eHuB). Pour réagir à **différents panneaux**,
+il suffit d'importer un autre `.xlsx` — aucune ligne de code à changer.
+
+```powershell
+# Génère configs/Ecran.json à partir de l'Excel
+dotnet run --project Mappa.Cli -- import "$env:USERPROFILE\Downloads\Ecran.xlsx"
+
+# Ou en choisissant la sortie / le nom / la feuille
+dotnet run --project Mappa.Cli -- import panneau2.xlsx --out ..\configs\panneau2.json --name panneau2
+```
+
+Sortie type :
+
+```
+Importe    : Ecran.xlsx
+Lignes     : 133 plages d'entites
+Controleurs: 4 (192.168.1.45, 192.168.1.46, 192.168.1.47, 192.168.1.48)
+Univers    : 129
+Entites    : 16633
+Geometrie  : 128 x 128 (serpentin, 259 LED/bande, 16 bandes/controleur)
+Validation : OK
+-> ecrit : ../configs/Ecran.json
+```
+
+Ensuite toutes les commandes (`text`, `image`, `anim`, `pixel`) marchent sur cette
+config générée, **sans passer `--cols`/`--rows`** : la géométrie est déduite
+automatiquement.
+
+### Ce que fait l'import (l'architecture)
+
+- **Colonnes lues** dans l'Excel : `Name`, `Entity Start`, `Entity End`, `ArtNet IP`,
+  `ArtNet Universe` (les autres colonnes sont ignorées).
+- **Couche d'ingestion** (CLI, `EhubXlsx.cs`) : lit le `.xlsx` (un ZIP de XML) sans
+  aucune dépendance externe (`System.IO.Compression` + `System.Xml.Linq`).
+- **Cœur `Mappa` (`ConfigBuilder`)** : transforme des lignes `EhubRow` en `Config`.
+  Chaque IP distincte → un contrôleur ; chaque univers reçoit un `index` global unique
+  **et** son `artnet_universe` local (0-31) ; les canaux sont empilés si plusieurs
+  lignes partagent le même univers. Ce code est **pur** → réutilisable par Unity plus
+  tard (Unity fournira sa propre lecture d'Excel et appellera `ConfigBuilder`).
+- **Géométrie (`WallGeometry.Infer`)** : déduit largeur/hauteur/serpentin du schéma
+  d'adressage. Les appareils auxiliaires (lyres, projecteur — tailles de bande
+  différentes) sont automatiquement ignorés pour le calcul du mur.
+
+> Note : `configs/ecran.json` (écrit à la main historiquement) et `configs/Ecran.json`
+> (généré par `import`) décrivent le même mur ; ils diffèrent seulement par la
+> numérotation des `index` d'univers, ce qui n'a aucun impact (c'est
+> `artnet_universe` qui part sur le fil).
 
 ---
 

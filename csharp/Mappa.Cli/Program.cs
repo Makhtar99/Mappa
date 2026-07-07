@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Mappa;
+using Mappa.Cli;
 
 // Point d'entree / CLI du module Configuration & Architecture (Personne B).
 //
@@ -39,6 +40,7 @@ internal static class Program
             case "pixel" when args.Length >= 2: return Pixel(args);
             case "anim" when args.Length >= 3: return Anim(args);
             case "image" when args.Length >= 2: return ImageCmd(args);
+            case "import" when args.Length >= 2: return Import(args);
             default: PrintUsage(); return 1;
         }
     }
@@ -64,9 +66,9 @@ internal static class Program
         Console.WriteLine("  Options :");
         Console.WriteLine("    --ip <adresse>     force l'IP du controleur.");
         Console.WriteLine("    --color <r,g,b>    couleur du texte (defaut: 255,255,255).");
+        Console.WriteLine("    --brightness <f>   attenue la couleur, 0..1 (defaut: 1 = plein).");
         Console.WriteLine("    --x <n> --y <n>    coin haut-gauche du texte (defaut: 0,0).");
-        Console.WriteLine("    --cols <n>         largeur du mur en LEDs (defaut: 64).");
-        Console.WriteLine("    --rows <n>         hauteur d'une colonne en LEDs (defaut: 128).");
+        Console.WriteLine("    (la geometrie du mur est deduite automatiquement de la config)");
         Console.WriteLine("    --flip-x / --flip-y  inverse l'axe (selon l'orientation physique).");
         Console.WriteLine("    --preview          affiche un apercu ASCII sans envoyer.");
         Console.WriteLine("    --once             envoie une seule frame (defaut: boucle 40 Hz).");
@@ -118,6 +120,15 @@ internal static class Program
         Console.WriteLine("  Convertir une image en PPM : magick photo.png -resize 128x128 photo.ppm");
         Console.WriteLine("  Exemple : mappa image ../configs/ecran.json --file photo.ppm");
         Console.WriteLine("  Exemple : mappa image ../configs/ecran.json --demo");
+        Console.WriteLine();
+        Console.WriteLine("import : genere une config JSON depuis un Excel d'adressage (.xlsx eHuB).");
+        Console.WriteLine("  Usage : mappa import <panneau.xlsx> [options]");
+        Console.WriteLine("  Options :");
+        Console.WriteLine("    --out <x.json>     fichier de sortie (defaut: <nom_excel>.json dans configs/).");
+        Console.WriteLine("    --name <nom>       nom de la config (defaut: nom du fichier).");
+        Console.WriteLine("    --sheet <feuille>  feuille a lire (defaut: la 1ere, ou 'eHuB' si presente).");
+        Console.WriteLine();
+        Console.WriteLine("  Exemple : mappa import panneau.xlsx --out ../configs/panneau.json");
     }
 
     private static string ResolveConfigsDir()
@@ -530,10 +541,10 @@ internal static class Program
         string? overrideIp = null;
         byte r = 255, g = 255, b = 255;
         int x = 0, y = 0;
-        int cols = 128, rows = 128;
         bool flipX = false, flipY = false;
         bool preview = false, once = false;
         int hz = 40;
+        double brightness = 1.0;
 
         for (int i = 3; i < args.Length; i++)
         {
@@ -542,13 +553,14 @@ internal static class Program
                 case "--ip" when i + 1 < args.Length: overrideIp = args[++i]; break;
                 case "--x" when i + 1 < args.Length: x = int.Parse(args[++i]); break;
                 case "--y" when i + 1 < args.Length: y = int.Parse(args[++i]); break;
-                case "--cols" when i + 1 < args.Length: cols = int.Parse(args[++i]); break;
-                case "--rows" when i + 1 < args.Length: rows = int.Parse(args[++i]); break;
                 case "--hz" when i + 1 < args.Length: hz = int.Parse(args[++i]); break;
                 case "--flip-x": flipX = true; break;
                 case "--flip-y": flipY = true; break;
                 case "--preview": preview = true; break;
                 case "--once": once = true; break;
+                case "--brightness" when i + 1 < args.Length:
+                    brightness = double.Parse(args[++i], System.Globalization.CultureInfo.InvariantCulture);
+                    break;
                 case "--color" when i + 1 < args.Length:
                     if (!TryParseColor(args[++i], out r, out g, out b)) return 1;
                     break;
@@ -556,26 +568,33 @@ internal static class Program
             }
         }
 
+        if (brightness < 0) brightness = 0;
+        r = (byte)Math.Clamp((int)(r * brightness), 0, 255);
+        g = (byte)Math.Clamp((int)(g * brightness), 0, 255);
+        b = (byte)Math.Clamp((int)(b * brightness), 0, 255);
+
         var config = LoadConfigWithIp(configPath, overrideIp);
         if (config == null) return 1;
 
+        var geo = WallGeometry.Infer(config);
         var plan = new RoutingPlan(config);
         var state = State.FromConfig(config);
 
-        int lit = Text.DrawString(state, message, x, y, r, g, b, cols, rows,
+        int lit = Text.DrawString(state, message, x, y, r, g, b, geo,
             flipX: flipX, flipY: flipY);
 
         Console.WriteLine($"Texte    : \"{message}\"");
-        Console.WriteLine($"Mur      : {cols} x {rows}, origine ({x},{y})");
+        Console.WriteLine($"Mur      : {geo.Columns} x {geo.Rows}, origine ({x},{y})");
+        Console.WriteLine($"Couleur  : ({r},{g},{b}) @ {brightness:P0}");
         Console.WriteLine($"Pixels   : {lit} LED(s) allumee(s)");
         if (lit == 0)
         {
-            Console.Error.WriteLine("Aucun pixel allume : verifie --cols/--rows et que les IDs du mur existent dans la config.");
+            Console.Error.WriteLine("Aucun pixel allume : verifie que les IDs du mur existent dans la config.");
         }
 
         if (preview)
         {
-            PreviewAscii(state, cols, Math.Min(rows, y + 6 * CountLines(message, cols, x)));
+            PreviewAscii(state, geo, Math.Min(geo.Rows, y + 6 * CountLines(message, geo.Columns, x)));
             return 0;
         }
 
@@ -603,7 +622,6 @@ internal static class Program
         int x = 0, y = 0;
         byte r = 255, g = 255, b = 255;
         int hz = 40;
-        int cols = 128, rows = 128;
 
         for (int i = 2; i < args.Length; i++)
         {
@@ -623,10 +641,11 @@ internal static class Program
         var config = LoadConfigWithIp(configPath, overrideIp);
         if (config == null) return 1;
 
+        var geo = WallGeometry.Infer(config);
         var plan = new RoutingPlan(config);
         var state = State.FromConfig(config);
 
-        int id = Text.WallEntityId(x, y, cols, rows);
+        int id = geo.EntityId(x, y);
         Console.WriteLine($"Position ({x},{y}) -> entite {id}");
         if (id < 0 || !state.Contains(id))
         {
@@ -657,7 +676,6 @@ internal static class Program
         byte r = 0, g = 200, b = 255;
         int? loops = null;
         double speed = 1.0;
-        const int cols = 128, rows = 128;
 
         for (int i = 3; i < args.Length; i++)
         {
@@ -676,6 +694,8 @@ internal static class Program
         var config = LoadConfigWithIp(configPath, overrideIp);
         if (config == null) return 1;
 
+        var geo = WallGeometry.Infer(config);
+        int cols = geo.Columns, rows = geo.Rows;
         var plan = new RoutingPlan(config);
         var state = State.FromConfig(config);
         using var sender = new ArtNetSender();
@@ -718,18 +738,18 @@ internal static class Program
             {
                 state.Clear();
                 if (blink % 2 == 0)
-                    Text.DrawStringScaled(state, message, centerX, 2, r, g, b, 1, 1, cols, rows);
+                    Text.DrawStringScaled(state, message, centerX, 2, r, g, b, 1, 1, geo);
                 HoldFrames(F(6));
             }
 
             // --- Phase 2 : apparition en haut, fixe ---
             state.Clear();
-            Text.DrawStringScaled(state, message, centerX, 2, r, g, b, 1, 1, cols, rows);
+            Text.DrawStringScaled(state, message, centerX, 2, r, g, b, 1, 1, geo);
             if (!HoldFrames(F(20))) break;
 
             // --- Phase 3 : apparition en bas, fixe ---
             state.Clear();
-            Text.DrawStringScaled(state, message, centerX, rows - textH1 - 2, r, g, b, 1, 1, cols, rows);
+            Text.DrawStringScaled(state, message, centerX, rows - textH1 - 2, r, g, b, 1, 1, geo);
             if (!HoldFrames(F(20))) break;
 
             // --- Phase 4 : grossissement centre (scale 1 -> maxScale) ---
@@ -741,7 +761,7 @@ internal static class Program
                 int ox = (cols - w) / 2;
                 int oy = (rows - h) / 2;
                 state.Clear();
-                Text.DrawStringScaled(state, message, ox, oy, r, g, b, s, 1, cols, rows);
+                Text.DrawStringScaled(state, message, ox, oy, r, g, b, s, 1, geo);
                 HoldFrames(F(8));
             }
             // petite pause a la taille max
@@ -758,7 +778,7 @@ internal static class Program
                 // couleur aleatoire vive a chaque saut
                 byte rr = (byte)rng.Next(64, 256), gg = (byte)rng.Next(64, 256), bb = (byte)rng.Next(64, 256);
                 state.Clear();
-                Text.DrawStringScaled(state, message, ox, oy, rr, gg, bb, scale, 1, cols, rows);
+                Text.DrawStringScaled(state, message, ox, oy, rr, gg, bb, scale, 1, geo);
                 HoldFrames(F(10));
             }
 
@@ -769,6 +789,72 @@ internal static class Program
         state.Clear();
         for (int i = 0; i < 3; i++) { Flush(); System.Threading.Thread.Sleep(frameMs); }
         Console.WriteLine("\nArrete. LEDs eteintes.");
+        return 0;
+    }
+
+    // ------------------------------------------------------------------ //
+    // import : lit un Excel d'adressage (.xlsx eHuB) et genere la config JSON.
+    // Permet de reagir dynamiquement a differents panneaux sans coder.
+    // ------------------------------------------------------------------ //
+    private static int Import(string[] args)
+    {
+        string xlsxPath = args[1];
+        string? outPath = null;
+        string? name = null;
+        string? sheet = null;
+
+        for (int i = 2; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--out" when i + 1 < args.Length: outPath = args[++i]; break;
+                case "--name" when i + 1 < args.Length: name = args[++i]; break;
+                case "--sheet" when i + 1 < args.Length: sheet = args[++i]; break;
+                default: Console.Error.WriteLine($"Option inconnue : {args[i]}"); return 1;
+            }
+        }
+
+        if (!File.Exists(xlsxPath))
+        {
+            Console.Error.WriteLine($"Excel introuvable : {xlsxPath}");
+            return 1;
+        }
+
+        name ??= Path.GetFileNameWithoutExtension(xlsxPath);
+        outPath ??= Path.Combine(ConfigsDir, name + ".json");
+
+        List<EhubRow> rows;
+        try { rows = EhubXlsx.Read(xlsxPath, sheet); }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Lecture de l'Excel impossible : {ex.Message}");
+            return 1;
+        }
+
+        if (rows.Count == 0)
+        {
+            Console.Error.WriteLine("Aucune ligne d'adressage valide trouvee dans l'Excel.");
+            return 1;
+        }
+
+        var config = ConfigBuilder.BuildFromEhub(rows, name);
+        var problems = config.Validate();
+
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath))!);
+        Persistence.SaveConfig(config, outPath);
+
+        var geo = WallGeometry.Infer(config);
+
+        Console.WriteLine($"Importe    : {xlsxPath}");
+        Console.WriteLine($"Lignes     : {rows.Count} plages d'entites");
+        Console.WriteLine($"Controleurs: {config.Controllers.Count} ({string.Join(", ", config.Controllers.ConvertAll(c => c.Ip))})");
+        Console.WriteLine($"Univers    : {config.Universes.Count}");
+        Console.WriteLine($"Entites    : {config.EntityIds().Count}");
+        Console.WriteLine($"Geometrie  : {geo.Columns} x {geo.Rows} " +
+                          $"({(geo.Serpentine ? "serpentin" : "simple")}, {geo.LedsPerBand} LED/bande, " +
+                          $"{geo.BandsPerController} bandes/controleur)");
+        Console.WriteLine($"Validation : {(problems.Count == 0 ? "OK" : string.Join("; ", problems))}");
+        Console.WriteLine($"-> ecrit : {outPath}");
         return 0;
     }
 
@@ -785,7 +871,6 @@ internal static class Program
         bool stretch = false;                 // deformer pour remplir (sinon ratio conserve)
         int box = 96;                         // cote max de la zone d'affichage (defaut < mur -> plus net)
         double brightness = 0.35;             // intensite (les LED sont tres lumineuses)
-        const int cols = 128, rows = 128;
         int hz = 40;
 
         for (int i = 2; i < args.Length; i++)
@@ -818,6 +903,9 @@ internal static class Program
 
         var config = LoadConfigWithIp(configPath, overrideIp);
         if (config == null) return 1;
+
+        var geo = WallGeometry.Infer(config);
+        int cols = geo.Columns, rows = geo.Rows;
 
         ImageArt img;
         if (demo)
@@ -865,7 +953,7 @@ internal static class Program
 
         var plan = new RoutingPlan(config);
         var state = State.FromConfig(config);
-        int lit = img.BlitToState(state, originX, originY, fitW, fitH, cols, rows,
+        int lit = img.BlitToState(state, originX, originY, fitW, fitH, geo,
             flipX: flipX, flipY: flipY, skipBlack: !keepBlack, brightness: brightness);
 
         Console.WriteLine($"Image    : {(demo ? "(demo generee)" : file)} {img.Width}x{img.Height} -> {fitW}x{fitH} @ ({originX},{originY})");
@@ -878,7 +966,7 @@ internal static class Program
 
         if (preview)
         {
-            PreviewAscii(state, cols, rows);
+            PreviewAscii(state, geo, rows);
             return 0;
         }
 
@@ -979,14 +1067,15 @@ internal static class Program
     // cadrage, retour a la ligne...
     private static readonly char[] LumRamp = { ' ', '.', ':', '-', '=', '+', '*', '#', '%', '@' };
 
-    private static void PreviewAscii(State state, int cols, int rowsToShow)
+    private static void PreviewAscii(State state, WallGeometry geo, int rowsToShow)
     {
+        int cols = geo.Columns;
         for (int row = 0; row < rowsToShow; row++)
         {
             var sb = new System.Text.StringBuilder(cols);
             for (int col = 0; col < cols; col++)
             {
-                int id = Text.WallEntityId(col, row, cols);
+                int id = geo.EntityId(col, row);
                 int lum = 0;
                 if (id >= 0 && state.Contains(id))
                 {
