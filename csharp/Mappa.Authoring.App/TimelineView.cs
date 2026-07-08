@@ -15,9 +15,22 @@ public sealed class TimelineView : Control
     private double _time;
 
     public event Action<double>? Seek;
+    public event Action<Clip?>? SelectionChanged;
+    public event Action? ClipEdited;
+
+    public Clip? Selected { get; private set; }
 
     private const double HeaderHeight = 18;
     private const double LaneGap = 4;
+    private const double EdgeGrab = 7;
+
+    private readonly List<(Track Track, Clip Clip, Rect Rect)> _hit = new();
+
+    private enum Drag { None, Move, Resize }
+    private Drag _drag = Drag.None;
+    private double _dragStartX;
+    private double _dragStartValue;
+    private double _dragStartDuration;
 
     private static Avalonia.Media.Color Rgb(byte r, byte g, byte b) => Avalonia.Media.Color.FromRgb(r, g, b);
 
@@ -33,6 +46,8 @@ public sealed class TimelineView : Control
     public void SetShow(Show show)
     {
         _show = show;
+        Selected = null;
+        SelectionChanged?.Invoke(null);
         InvalidateVisual();
     }
 
@@ -42,17 +57,76 @@ public sealed class TimelineView : Control
         InvalidateVisual();
     }
 
+    public void Select(Clip? clip)
+    {
+        Selected = clip;
+        SelectionChanged?.Invoke(clip);
+        InvalidateVisual();
+    }
+
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
         if (_show == null || _show.Duration <= 0) return;
-        double x = e.GetPosition(this).X;
-        double t = Math.Clamp(x / Bounds.Width, 0, 1) * _show.Duration;
+        var pos = e.GetPosition(this);
+
+        foreach (var (_, clip, rect) in _hit)
+        {
+            if (rect.Contains(pos))
+            {
+                Select(clip);
+                _dragStartX = pos.X;
+                if (pos.X >= rect.Right - EdgeGrab)
+                {
+                    _drag = Drag.Resize;
+                    _dragStartDuration = clip.Duration;
+                }
+                else
+                {
+                    _drag = Drag.Move;
+                    _dragStartValue = clip.Start;
+                }
+                e.Pointer.Capture(this);
+                return;
+            }
+        }
+
+        Select(null);
+        double t = Math.Clamp(pos.X / Bounds.Width, 0, 1) * _show.Duration;
         Seek?.Invoke(t);
+    }
+
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+        if (_drag == Drag.None || Selected == null || _show == null) return;
+
+        double dx = e.GetPosition(this).X - _dragStartX;
+        double dt = dx / Bounds.Width * _show.Duration;
+
+        if (_drag == Drag.Move)
+            Selected.Start = Math.Max(0, _dragStartValue + dt);
+        else
+            Selected.Duration = Math.Max(0.1, _dragStartDuration + dt);
+
+        ClipEdited?.Invoke();
+        InvalidateVisual();
+    }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+        if (_drag != Drag.None)
+        {
+            _drag = Drag.None;
+            e.Pointer.Capture(null);
+            ClipEdited?.Invoke();
+        }
     }
 
     public override void Render(DrawingContext context)
     {
+        _hit.Clear();
         var b = Bounds;
         context.FillRectangle(new SolidColorBrush(Rgb(28, 28, 32)), new Rect(b.Size));
         if (_show == null || _show.Duration <= 0) return;
@@ -79,9 +153,12 @@ public sealed class TimelineView : Control
                 double x1 = clip.Start / dur * width;
                 double x2 = clip.End / dur * width;
                 var rect = new Rect(x1, y + 2, Math.Max(2, x2 - x1), laneHeight - 4);
+                _hit.Add((track, clip, rect));
+
                 var color = KindColors.TryGetValue(clip.Effect.Kind, out var c) ? c : Colors.Gray;
                 var brush = new SolidColorBrush(color, track.Enabled ? 0.9 : 0.35);
-                context.DrawRectangle(brush, null, rect, 4, 4);
+                var border = ReferenceEquals(clip, Selected) ? new Pen(Brushes.White, 2) : null;
+                context.DrawRectangle(brush, border, rect, 4, 4);
 
                 var label = $"{clip.Name} · {clip.Effect.Kind}";
                 var ft = new FormattedText(label, CultureInfo.CurrentCulture,

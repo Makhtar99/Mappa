@@ -43,8 +43,14 @@ public partial class MainWindow : Window
         LoadShowButton.Click += OnLoadShow;
         SaveShowButton.Click += OnSaveShow;
         LoadAudioButton.Click += OnLoadAudio;
+        AddTrackButton.Click += (_, _) => OnAddTrack();
+        AddClipButton.Click += (_, _) => OnAddClip();
+        DeleteClipButton.Click += (_, _) => OnDeleteClip();
         EmitCheck.IsCheckedChanged += OnEmitToggle;
         Timeline.Seek += t => _clock.Seek(t);
+        Timeline.SelectionChanged += BuildInspector;
+        Timeline.ClipEdited += OnClipEdited;
+        BuildInspector(null);
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
         _timer.Tick += OnTick;
