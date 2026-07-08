@@ -12,6 +12,8 @@ namespace Mappa.Authoring.App;
 public partial class MainWindow : Window
 {
     private readonly Transport _transport = new();
+    private IPlaybackClock _clock = null!;
+    private AudioPlayer? _audio;
     private Config _config = null!;
     private EntityLayout _layout = null!;
     private Show _show = null!;
@@ -30,22 +32,25 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
+        _clock = _transport;
+
         ApplyConfig(Mappa.Wall.BuildWallConfig());
         ApplyShow(DemoShows.BuildDemo());
 
         PlayButton.Click += (_, _) => TogglePlay();
-        StopButton.Click += (_, _) => { _transport.Stop(); UpdatePlayButton(); };
+        StopButton.Click += (_, _) => { _clock.Stop(); UpdatePlayButton(); };
         LoadConfigButton.Click += OnLoadConfig;
         LoadShowButton.Click += OnLoadShow;
         SaveShowButton.Click += OnSaveShow;
+        LoadAudioButton.Click += OnLoadAudio;
         EmitCheck.IsCheckedChanged += OnEmitToggle;
-        Timeline.Seek += t => _transport.Seek(t);
+        Timeline.Seek += t => _clock.Seek(t);
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
         _timer.Tick += OnTick;
         _timer.Start();
 
-        Closed += (_, _) => { _timer.Stop(); StopEmit(); };
+        Closed += (_, _) => { _timer.Stop(); StopEmit(); _audio?.Dispose(); };
     }
 
     private void ApplyConfig(Config c)
@@ -75,18 +80,18 @@ public partial class MainWindow : Window
 
     private void TogglePlay()
     {
-        _transport.TogglePlay();
+        _clock.TogglePlay();
         UpdatePlayButton();
     }
 
     private void UpdatePlayButton()
     {
-        PlayButton.Content = _transport.Playing ? "⏸ Pause" : "▶ Play";
+        PlayButton.Content = _clock.Playing ? "⏸ Pause" : "▶ Play";
     }
 
     private void OnTick(object? sender, EventArgs e)
     {
-        double t = _transport.CurrentTime;
+        double t = _clock.CurrentTime;
         _player?.RenderAt(t, _previewState);
         Wall.UpdateFrom(_previewState);
         Timeline.SetTime(t);
@@ -117,7 +122,7 @@ public partial class MainWindow : Window
             string host = string.IsNullOrWhiteSpace(HostBox.Text) ? "127.0.0.1" : HostBox.Text!.Trim();
             int port = int.TryParse(PortBox.Text, out var p) ? p : Ehub.DefaultUdpPort;
             _sender = new EhubSender(host, port);
-            _runner = new ShowRunner(_show, _layout, _sender) { TimeSource = () => _transport.CurrentTime };
+            _runner = new ShowRunner(_show, _layout, _sender) { TimeSource = () => _clock.CurrentTime };
             _runner.Start();
         }
         catch (Exception ex)
@@ -143,7 +148,7 @@ public partial class MainWindow : Window
 
     private async void OnLoadConfig(object? sender, RoutedEventArgs e)
     {
-        var file = await PickOpen("Config d'installation (JSON)");
+        var file = await PickOpen("Config d'installation (JSON)", JsonType);
         if (file == null) return;
         try { ApplyConfig(Persistence.LoadConfig(file)); }
         catch (Exception ex) { StatusText.Text = $"Config invalide : {ex.Message}"; }
@@ -151,7 +156,7 @@ public partial class MainWindow : Window
 
     private async void OnLoadShow(object? sender, RoutedEventArgs e)
     {
-        var file = await PickOpen("Show (JSON)");
+        var file = await PickOpen("Show (JSON)", JsonType);
         if (file == null) return;
         try { ApplyShow(ShowFile.Load(file)); }
         catch (Exception ex) { StatusText.Text = $"Show invalide : {ex.Message}"; }
@@ -173,7 +178,34 @@ public partial class MainWindow : Window
         catch (Exception ex) { StatusText.Text = $"Échec sauvegarde : {ex.Message}"; }
     }
 
-    private async System.Threading.Tasks.Task<string?> PickOpen(string title)
+    private async void OnLoadAudio(object? sender, RoutedEventArgs e)
+    {
+        var file = await PickOpen("Fichier audio", AudioType);
+        if (file == null) return;
+        try
+        {
+            _audio ??= new AudioPlayer();
+            await _audio.LoadAsync(file);
+            _clock = _audio;
+            _show.AudioPath = file;
+            double d = _audio.Duration;
+            if (d > 0)
+            {
+                _show.Duration = d;
+                _transport.Duration = d;
+            }
+            RestartRunnerIfEmitting();
+            UpdatePlayButton();
+            StatusText.Text = $"Audio : {System.IO.Path.GetFileName(file)} ({_show.Duration:F0}s)";
+        }
+        catch (Exception ex)
+        {
+            _clock = _transport;
+            StatusText.Text = $"Audio impossible : {ex.Message}";
+        }
+    }
+
+    private async System.Threading.Tasks.Task<string?> PickOpen(string title, FilePickerFileType type)
     {
         var top = TopLevel.GetTopLevel(this);
         if (top == null) return null;
@@ -181,10 +213,14 @@ public partial class MainWindow : Window
         {
             Title = title,
             AllowMultiple = false,
-            FileTypeFilter = new[] { JsonType },
+            FileTypeFilter = new[] { type },
         });
         return files.Count > 0 ? files[0].Path.LocalPath : null;
     }
 
     private static readonly FilePickerFileType JsonType = new("JSON") { Patterns = new[] { "*.json" } };
+    private static readonly FilePickerFileType AudioType = new("Audio")
+    {
+        Patterns = new[] { "*.mp3", "*.wav", "*.flac", "*.ogg", "*.m4a", "*.aac" },
+    };
 }

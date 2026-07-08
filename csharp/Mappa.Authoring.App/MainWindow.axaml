@@ -16,6 +16,7 @@
                 <Button x:Name="LoadConfigButton" Content="Config…" />
                 <Button x:Name="LoadShowButton" Content="Ouvrir show…" />
                 <Button x:Name="SaveShowButton" Content="Enregistrer…" />
+                <Button x:Name="LoadAudioButton" Content="Audio…" />
                 <Rectangle Width="1" Height="24" Fill="#333" />
                 <CheckBox x:Name="EmitCheck" Content="Émettre eHuB" VerticalAlignment="Center" />
                 <TextBox x:Name="HostBox" Text="127.0.0.1" Width="110" Watermark="hôte" />

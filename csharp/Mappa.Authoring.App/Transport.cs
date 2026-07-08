@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace Mappa.Authoring.App;
 
-public sealed class Transport
+public sealed class Transport : IPlaybackClock
 {
     private readonly Stopwatch _sw = new();
     private double _anchor;
