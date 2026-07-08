@@ -1,0 +1,34 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Mappa.Authoring.App"
+        x:Class="Mappa.Authoring.App.MainWindow"
+        Width="1100" Height="760"
+        Background="#141418"
+        Title="Mappa — Authoring">
+
+    <DockPanel LastChildFill="True">
+
+        <Border DockPanel.Dock="Top" Background="#1E1E24" Padding="8" BorderBrush="#2A2A32" BorderThickness="0,0,0,1">
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Button x:Name="PlayButton" Content="▶ Play" Width="90" />
+                <Button x:Name="StopButton" Content="⏹ Stop" Width="70" />
+                <Rectangle Width="1" Height="24" Fill="#333" />
+                <Button x:Name="LoadConfigButton" Content="Config…" />
+                <Button x:Name="LoadShowButton" Content="Ouvrir show…" />
+                <Button x:Name="SaveShowButton" Content="Enregistrer…" />
+                <Rectangle Width="1" Height="24" Fill="#333" />
+                <CheckBox x:Name="EmitCheck" Content="Émettre eHuB" VerticalAlignment="Center" />
+                <TextBox x:Name="HostBox" Text="127.0.0.1" Width="110" Watermark="hôte" />
+                <TextBox x:Name="PortBox" Text="8765" Width="70" Watermark="port" />
+                <TextBlock x:Name="StatusText" Foreground="#9AA" VerticalAlignment="Center" Margin="8,0,0,0" />
+            </StackPanel>
+        </Border>
+
+        <Border DockPanel.Dock="Bottom" Height="170" Background="#16161A" BorderBrush="#2A2A32" BorderThickness="0,1,0,0">
+            <local:TimelineView x:Name="Timeline" />
+        </Border>
+
+        <local:WallView x:Name="Wall" />
+
+    </DockPanel>
+</Window>
