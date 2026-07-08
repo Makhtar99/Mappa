@@ -4,9 +4,8 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Xml.Linq;
-using Mappa;
 
-namespace Mappa.Cli
+namespace Mappa
 {
     /// <summary>
     /// Lecteur .xlsx natif (sans dependance NuGet) du tableau d'adressage eHuB.
@@ -14,10 +13,12 @@ namespace Mappa.Cli
     /// Un fichier .xlsx est une archive ZIP de XML. On lit la table des chaines
     /// partagees (xl/sharedStrings.xml) et la feuille voulue, puis on mappe les
     /// colonnes par leur en-tete ("Name", "Entity Start", "Entity End",
-    /// "ArtNet IP", "ArtNet Universe"). Cette couche d'ingestion est cote CLI ;
-    /// le coeur Mappa reste sans dependance (il ne recoit que des EhubRow).
+    /// "ArtNet IP", "ArtNet Universe"). N'utilise que la BCL (System.IO.Compression
+    /// + System.Xml.Linq) : le coeur Mappa reste sans dependance externe. Cohabite
+    /// avec Persistence (qui fait deja de l'I/O fichier), et sert aussi bien au CLI
+    /// qu'a l'UI (import .xlsx depuis l'interface).
     /// </summary>
-    internal static class EhubXlsx
+    public static class EhubXlsx
     {
         private static readonly XNamespace Main =
             "http://schemas.openxmlformats.org/spreadsheetml/2006/main";

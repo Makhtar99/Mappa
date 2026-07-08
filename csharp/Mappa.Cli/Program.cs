@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Mappa;
-using Mappa.Cli;
 
 // Point d'entree / CLI du module Configuration & Architecture (Personne B).
 //
