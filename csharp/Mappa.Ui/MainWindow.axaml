@@ -27,6 +27,11 @@
                   HorizontalContentAlignment="Center"/>
         </StackPanel>
         <CheckBox x:Name="FakerChk" Content="Faker (démo arc-en-ciel)" IsChecked="True"/>
+        <CheckBox x:Name="EhubChk" Content="Recevoir eHuB (réseau)"/>
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock Text="Port eHuB" VerticalAlignment="Center" Foreground="#bbb"/>
+          <TextBox x:Name="EhubPortBox" Text="8765" Width="80"/>
+        </StackPanel>
         <CheckBox x:Name="SendChk" Content="Émettre en ArtNet (UDP réel)"/>
 
         <Border Height="1" Background="#333" Margin="0,4"/>

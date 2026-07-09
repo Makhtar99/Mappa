@@ -44,6 +44,7 @@ namespace Mappa.Ui
                 if (_engine != null) _engine.SendArtNet = SendChk.IsChecked ?? false;
             };
             FakerChk.IsCheckedChanged += (_, _) => UpdateFaker();
+            EhubChk.IsCheckedChanged += (_, _) => UpdateFaker();
 
             _uiTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
             _uiTimer.Tick += (_, _) => OnUiTick();
@@ -145,10 +146,44 @@ namespace Mappa.Ui
             if (_engine != null) Status("Routage arrêté.");
         }
 
+        private EhubFaker? _ehubFaker;
+
         private void UpdateFaker()
         {
             if (_engine == null) return;
-            _engine.Faker = (FakerChk.IsChecked ?? false) ? new RainbowFaker() : null;
+
+            if (!(EhubChk.IsChecked ?? false) && _ehubFaker != null)
+            {
+                _ehubFaker.Dispose();
+                _ehubFaker = null;
+            }
+
+            if (EhubChk.IsChecked ?? false)
+            {
+                if (_ehubFaker == null)
+                {
+                    int port = int.TryParse(EhubPortBox.Text, out var p) ? p : Ehub.DefaultUdpPort;
+                    try
+                    {
+                        _ehubFaker = new EhubFaker(port);
+                    }
+                    catch (Exception ex)
+                    {
+                        Status("Réception eHuB impossible : " + ex.Message);
+                        EhubChk.IsChecked = false;
+                        return;
+                    }
+                }
+                _engine.Faker = _ehubFaker;
+            }
+            else if (FakerChk.IsChecked ?? false)
+            {
+                _engine.Faker = new RainbowFaker();
+            }
+            else
+            {
+                _engine.Faker = null;
+            }
         }
 
         // ------------------------------------------------------------------ //
@@ -247,6 +282,7 @@ namespace Mappa.Ui
         {
             _uiTimer.Stop();
             _engine?.Dispose();
+            _ehubFaker?.Dispose();
             base.OnClosed(e);
         }
     }

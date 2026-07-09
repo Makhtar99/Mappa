@@ -13,6 +13,14 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mappa.Tests", "Mappa.Tests\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mappa.Ui", "Mappa.Ui\Mappa.Ui.csproj", "{FC9DB17A-A3DD-4F21-9983-677DF1CE5738}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mappa.Authoring.Core", "Mappa.Authoring.Core\Mappa.Authoring.Core.csproj", "{D44A6939-D694-4403-9E00-4F555CE24798}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mappa.Authoring.App", "Mappa.Authoring.App\Mappa.Authoring.App.csproj", "{3204FB59-E9AB-45CB-9B26-8FC607837D85}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mappa.Authoring.Cli", "Mappa.Authoring.Cli\Mappa.Authoring.Cli.csproj", "{517E925B-8B8E-43A0-B639-D19C86A7DEB6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mappa.Authoring.Tests", "Mappa.Authoring.Tests\Mappa.Authoring.Tests.csproj", "{F184121F-DCA9-49B7-8167-AF825570AEF5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -42,5 +50,21 @@ Global
 		{FC9DB17A-A3DD-4F21-9983-677DF1CE5738}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FC9DB17A-A3DD-4F21-9983-677DF1CE5738}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FC9DB17A-A3DD-4F21-9983-677DF1CE5738}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D44A6939-D694-4403-9E00-4F555CE24798}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D44A6939-D694-4403-9E00-4F555CE24798}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D44A6939-D694-4403-9E00-4F555CE24798}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D44A6939-D694-4403-9E00-4F555CE24798}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3204FB59-E9AB-45CB-9B26-8FC607837D85}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3204FB59-E9AB-45CB-9B26-8FC607837D85}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3204FB59-E9AB-45CB-9B26-8FC607837D85}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3204FB59-E9AB-45CB-9B26-8FC607837D85}.Release|Any CPU.Build.0 = Release|Any CPU
+		{517E925B-8B8E-43A0-B639-D19C86A7DEB6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{517E925B-8B8E-43A0-B639-D19C86A7DEB6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{517E925B-8B8E-43A0-B639-D19C86A7DEB6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{517E925B-8B8E-43A0-B639-D19C86A7DEB6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F184121F-DCA9-49B7-8167-AF825570AEF5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F184121F-DCA9-49B7-8167-AF825570AEF5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F184121F-DCA9-49B7-8167-AF825570AEF5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F184121F-DCA9-49B7-8167-AF825570AEF5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

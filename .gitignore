@@ -7,3 +7,6 @@ obj/
 
 # Artefact genere par la demo failover
 configs/wall_dual_after_failover.json
+
+# Doublon de casse genere depuis l'Excel (la version suivie est configs/ecran.json)
+configs/Ecran.json
