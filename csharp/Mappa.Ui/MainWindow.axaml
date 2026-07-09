@@ -1,0 +1,61 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Mappa.Ui.MainWindow"
+        Width="1120" Height="740"
+        Title="Mappa — Moniteur de routage ArtNet (Personne A)">
+
+  <DockPanel>
+
+    <!-- Panneau de controle (gauche) -->
+    <Border DockPanel.Dock="Left" Width="310" Padding="14" Background="#1b1b1f">
+      <StackPanel Spacing="10">
+
+        <TextBlock Text="CONFIGURATION" FontWeight="Bold" Foreground="#8ab4f8"/>
+        <TextBox x:Name="ConfigPath" Watermark="chemin d'une config .json"/>
+        <Button x:Name="LoadBtn" Content="Charger un .json"
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+        <Button x:Name="ImportXlsxBtn" Content="Importer un .xlsx (eHuB)…"
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+
+        <Border Height="1" Background="#333" Margin="0,4"/>
+
+        <TextBlock Text="ROUTAGE" FontWeight="Bold" Foreground="#8ab4f8"/>
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Button x:Name="StartBtn" Content="▶ Start" Width="130"
+                  HorizontalContentAlignment="Center"/>
+          <Button x:Name="StopBtn" Content="■ Stop" Width="130"
+                  HorizontalContentAlignment="Center"/>
+        </StackPanel>
+        <CheckBox x:Name="FakerChk" Content="Faker (démo arc-en-ciel)" IsChecked="True"/>
+        <CheckBox x:Name="SendChk" Content="Émettre en ArtNet (UDP réel)"/>
+
+        <Border Height="1" Background="#333" Margin="0,4"/>
+
+        <TextBlock Text="STATISTIQUES" FontWeight="Bold" Foreground="#8ab4f8"/>
+        <TextBlock x:Name="StatsText" Text="—"
+                   FontFamily="Consolas, Cascadia Mono, monospace"
+                   Foreground="#d0d0d0"/>
+
+        <Border Height="1" Background="#333" Margin="0,4"/>
+
+        <TextBlock Text="Visualiseur DMX : 1 ligne = 1 univers, 1 case = 1 LED (RVB), avant encapsulation ArtNet."
+                   TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
+
+      </StackPanel>
+    </Border>
+
+    <!-- Barre de statut (bas) -->
+    <Border DockPanel.Dock="Bottom" Padding="8" Background="#141417">
+      <TextBlock x:Name="StatusText" Text="Prêt — charge une config puis Start." Foreground="#bbb"/>
+    </Border>
+
+    <!-- Visualiseur DMX (centre) -->
+    <ScrollViewer Background="#0a0a0c"
+                  HorizontalScrollBarVisibility="Auto"
+                  VerticalScrollBarVisibility="Auto">
+      <Image x:Name="DmxImage" Stretch="None"
+             HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8"/>
+    </ScrollViewer>
+
+  </DockPanel>
+</Window>

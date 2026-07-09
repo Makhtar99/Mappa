@@ -118,15 +118,15 @@ sequenceDiagram
 
 ## 4. Décisions d'architecture (et pourquoi)
 
-| Décision | Raison |
-| --- | --- |
-| **Buffer dense** RVBW réutilisé (pas de dict/frame) | ~16 000 entités × 40 Hz : éviter allocations et pression GC |
-| Adressage par **plages** (`EntityMapping`) au lieu d'1 entrée/LED | Config compacte et lisible pour 8 000+ entités |
-| Résolution **précalculée** dans `RoutingPlan` | A ne recalcule rien par frame : juste une copie d'octets |
-| Positions 3D **hors** du contrat de routage (fichier séparé) | A n'en a pas besoin ; supporte des formes quelconques sans alourdir le routage |
-| Config en **JSON** | Lisible, versionnable Git, éditable à la main, livrable exigé |
-| **`Validate()`** avant chargement | Attrape tôt : contrôleur inconnu, débordement, chevauchement d'IDs |
-| Implémentation **C# / `netstandard2.1`** | Compatible Unity, langage retenu par l'équipe |
+| Décision                                                          | Raison                                                                         |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| **Buffer dense** RVBW réutilisé (pas de dict/frame)               | ~16 000 entités × 40 Hz : éviter allocations et pression GC                    |
+| Adressage par **plages** (`EntityMapping`) au lieu d'1 entrée/LED | Config compacte et lisible pour 8 000+ entités                                 |
+| Résolution **précalculée** dans `RoutingPlan`                     | A ne recalcule rien par frame : juste une copie d'octets                       |
+| Positions 3D **hors** du contrat de routage (fichier séparé)      | A n'en a pas besoin ; supporte des formes quelconques sans alourdir le routage |
+| Config en **JSON**                                                | Lisible, versionnable Git, éditable à la main, livrable exigé                  |
+| **`Validate()`** avant chargement                                 | Attrape tôt : contrôleur inconnu, débordement, chevauchement d'IDs             |
+| Implémentation **C# / `netstandard2.1`**                          | Compatible Unity, langage retenu par l'équipe                                  |
 
 ## 5. Flexibilité démontrée (les 3 scénarios P4)
 
@@ -150,7 +150,7 @@ flowchart TD
 Point d'architecture fort pour l'oral : **la panne ne touche pas l'adressage
 logique**. Les LED physiques ne bougent pas → `entity_map` (donc le
 `RoutingPlan` : entité → univers/canal) est **inchangé**. Seule l'association
-*univers → contrôleur/IP* est réécrite.
+_univers → contrôleur/IP_ est réécrite.
 
 ```mermaid
 flowchart LR
@@ -169,18 +169,18 @@ C'est exactement le scénario demandé par la doc (« un contrôleur tombe en pa
 
 ![Aperçu 3D de l'araignée](docs/spider_3d.png)
 
-*(Corps en rouge dans le plan z=0, 8 pattes coudées montant en z : une
-installation non planaire routée par exactement le même code que le mur.)*
+_(Corps en rouge dans le plan z=0, 8 pattes coudées montant en z : une
+installation non planaire routée par exactement le même code que le mur.)_
 
 ## 6. Performance (le juge de P2)
 
 `Mappa.Bench` mesure `render()` sur le mur cible (16 384 entités, 128 univers) :
 
-| Métrique | Valeur mesurée |
-| --- | --- |
-| `render()` moyen | **~0,19 ms / frame** |
-| Budget d'une frame à 40 Hz | 25 ms |
-| Budget utilisé | **~0,7 %** (marge ≈ ×130) |
+| Métrique                   | Valeur mesurée            |
+| -------------------------- | ------------------------- |
+| `render()` moyen           | **~0,19 ms / frame**      |
+| Budget d'une frame à 40 Hz | 25 ms                     |
+| Budget utilisé             | **~0,7 %** (marge ≈ ×130) |
 
 La synchro son/lumière est le critère de perf visible : ce résultat montre que
 le pipeline (buffer dense + plan précalculé) laisse tout le budget au reste
@@ -188,17 +188,17 @@ le pipeline (buffer dense + plan précalculé) laisse tout le budget au reste
 
 ## 7. Où est quoi dans le code
 
-| Bloc | Fichier |
-| --- | --- |
-| Contrat State | `csharp/Mappa/State.cs` |
-| Config + validation | `csharp/Mappa/Config.cs` |
-| Résolution routage (pour A) | `csharp/Mappa/RoutingPlan.cs` |
-| Save/Load + hot reload | `csharp/Mappa/Persistence.cs` |
-| Mur LED | `csharp/Mappa/Wall.cs` |
-| Formes non-2D | `csharp/Mappa/Shapes.cs` |
-| Failover / redéploiement | `csharp/Mappa/Failover.cs` |
-| Émetteur ArtNet (réf. côté A) | `csharp/Mappa/ArtNet.cs` |
-| CLI / Bench / Tests | `csharp/Mappa.Cli`, `Mappa.Bench`, `Mappa.Tests` |
+| Bloc                          | Fichier                                          |
+| ----------------------------- | ------------------------------------------------ |
+| Contrat State                 | `csharp/Mappa/State.cs`                          |
+| Config + validation           | `csharp/Mappa/Config.cs`                         |
+| Résolution routage (pour A)   | `csharp/Mappa/RoutingPlan.cs`                    |
+| Save/Load + hot reload        | `csharp/Mappa/Persistence.cs`                    |
+| Mur LED                       | `csharp/Mappa/Wall.cs`                           |
+| Formes non-2D                 | `csharp/Mappa/Shapes.cs`                         |
+| Failover / redéploiement      | `csharp/Mappa/Failover.cs`                       |
+| Émetteur ArtNet (réf. côté A) | `csharp/Mappa/ArtNet.cs`                         |
+| CLI / Bench / Tests           | `csharp/Mappa.Cli`, `Mappa.Bench`, `Mappa.Tests` |
 
 ## 8. Trois phrases à retenir pour l'oral
 
