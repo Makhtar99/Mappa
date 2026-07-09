@@ -24,6 +24,8 @@ namespace Mappa.Authoring.Core
 
         public int FramesSent { get; private set; }
         public double LastFrameTime { get; private set; }
+        public long SendErrors { get; private set; }
+        public string? LastError { get; private set; }
 
         public ShowRunner(Show show, EntityLayout layout, EhubSender sender, int maxEntitiesPerMessage = EhubUniversePlan.DefaultMaxEntitiesPerMessage)
         {
@@ -85,12 +87,20 @@ namespace Mappa.Authoring.Core
                 if (Loop && _show.Duration > 0)
                     t %= _show.Duration;
 
-                RenderAndSend(t);
-
-                if (Now() - lastConfig >= 1.0)
+                try
                 {
-                    SendConfig();
-                    lastConfig = Now();
+                    RenderAndSend(t);
+
+                    if (Now() - lastConfig >= 1.0)
+                    {
+                        SendConfig();
+                        lastConfig = Now();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SendErrors++;
+                    LastError = ex.Message;
                 }
 
                 double sleep = period - sw.Elapsed.TotalSeconds;
