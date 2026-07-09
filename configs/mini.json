@@ -1,0 +1,16 @@
+{
+  "name": "mini-2-leds",
+  "controllers": [
+    {"id": "ctrl-1", "ip": "127.0.0.1", "port": 6454, "outputs": 16}
+  ],
+  "universes": [
+    {"index": 0, "controller_id": "ctrl-1", "output": 0}
+  ],
+  "strips": [
+    {"id": "strip-1", "led_count": 2, "universe_start": 0, "channel_start": 0, "led_type": "RGB"}
+  ],
+  "devices": [],
+  "entity_map": [
+    {"entity_start": 1, "entity_end": 2, "universe_start": 0, "channel_start": 0, "led_type": "RGB"}
+  ]
+}

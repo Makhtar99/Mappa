@@ -1,0 +1,40 @@
+{
+  "name": "spider",
+  "controllers": [
+    {"id": "ctrl-1", "ip": "192.168.1.10", "port": 6454, "outputs": 16}
+  ],
+  "universes": [
+    {"index": 0, "controller_id": "ctrl-1", "output": 0},
+    {"index": 1, "controller_id": "ctrl-1", "output": 0},
+    {"index": 2, "controller_id": "ctrl-1", "output": 1},
+    {"index": 3, "controller_id": "ctrl-1", "output": 1},
+    {"index": 4, "controller_id": "ctrl-1", "output": 2},
+    {"index": 5, "controller_id": "ctrl-1", "output": 2},
+    {"index": 6, "controller_id": "ctrl-1", "output": 3},
+    {"index": 7, "controller_id": "ctrl-1", "output": 3},
+    {"index": 8, "controller_id": "ctrl-1", "output": 4}
+  ],
+  "strips": [
+    {"id": "body", "led_count": 20, "universe_start": 0, "channel_start": 0, "led_type": "RGB"},
+    {"id": "leg-1", "led_count": 30, "universe_start": 1, "channel_start": 0, "led_type": "RGB"},
+    {"id": "leg-2", "led_count": 30, "universe_start": 2, "channel_start": 0, "led_type": "RGB"},
+    {"id": "leg-3", "led_count": 30, "universe_start": 3, "channel_start": 0, "led_type": "RGB"},
+    {"id": "leg-4", "led_count": 30, "universe_start": 4, "channel_start": 0, "led_type": "RGB"},
+    {"id": "leg-5", "led_count": 30, "universe_start": 5, "channel_start": 0, "led_type": "RGB"},
+    {"id": "leg-6", "led_count": 30, "universe_start": 6, "channel_start": 0, "led_type": "RGB"},
+    {"id": "leg-7", "led_count": 30, "universe_start": 7, "channel_start": 0, "led_type": "RGB"},
+    {"id": "leg-8", "led_count": 30, "universe_start": 8, "channel_start": 0, "led_type": "RGB"}
+  ],
+  "devices": [],
+  "entity_map": [
+    {"entity_start": 100, "entity_end": 119, "universe_start": 0, "channel_start": 0, "led_type": "RGB"},
+    {"entity_start": 1000, "entity_end": 1029, "universe_start": 1, "channel_start": 0, "led_type": "RGB"},
+    {"entity_start": 2000, "entity_end": 2029, "universe_start": 2, "channel_start": 0, "led_type": "RGB"},
+    {"entity_start": 3000, "entity_end": 3029, "universe_start": 3, "channel_start": 0, "led_type": "RGB"},
+    {"entity_start": 4000, "entity_end": 4029, "universe_start": 4, "channel_start": 0, "led_type": "RGB"},
+    {"entity_start": 5000, "entity_end": 5029, "universe_start": 5, "channel_start": 0, "led_type": "RGB"},
+    {"entity_start": 6000, "entity_end": 6029, "universe_start": 6, "channel_start": 0, "led_type": "RGB"},
+    {"entity_start": 7000, "entity_end": 7029, "universe_start": 7, "channel_start": 0, "led_type": "RGB"},
+    {"entity_start": 8000, "entity_end": 8029, "universe_start": 8, "channel_start": 0, "led_type": "RGB"}
+  ]
+}

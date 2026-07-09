@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="440" viewBox="0 0 960 440" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 z" fill="#333"/>
+    </marker>
+    <style>
+      .box { rx: 12; ry: 12; stroke-width: 2; }
+      .title { font-size: 15px; font-weight: 700; fill: #1a1a2e; }
+      .sub { font-size: 12px; fill: #444; }
+      .edge { stroke: #333; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+      .elabel { font-size: 12px; fill: #333; }
+      .zone { font-size: 12px; font-weight: 700; letter-spacing: .5px; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="960" height="440" fill="#fbfbfe"/>
+  <text x="480" y="34" text-anchor="middle" font-size="20" font-weight="700" fill="#1a1a2e">Mappa  Architecture (Personne B : les contrats)</text>
+
+  <!-- Zone Authoring -->
+  <text x="120" y="80" text-anchor="middle" class="zone" fill="#6a4cff">AUTHORING (C)</text>
+  <rect x="30" y="95" width="180" height="90" class="box" fill="#efeaff" stroke="#6a4cff"/>
+  <text x="120" y="130" text-anchor="middle" class="title">Animations</text>
+  <text x="120" y="152" text-anchor="middle" class="sub">timeline, effets</text>
+  <text x="120" y="170" text-anchor="middle" class="sub">écrit des couleurs</text>
+
+  <!-- Zone Contrats (B) -->
+  <text x="480" y="80" text-anchor="middle" class="zone" fill="#0a8f5b">CONTRATS (B)</text>
+  <rect x="300" y="95" width="360" height="250" class="box" fill="#e7f8f0" stroke="#0a8f5b"/>
+
+  <rect x="330" y="120" width="300" height="80" class="box" fill="#ffffff" stroke="#0a8f5b"/>
+  <text x="480" y="150" text-anchor="middle" class="title">State</text>
+  <text x="480" y="172" text-anchor="middle" class="sub">buffer dense RVBW réutilisé</text>
+  <text x="480" y="190" text-anchor="middle" class="sub">défaut = noir · ~40 Hz sans alloc</text>
+
+  <rect x="330" y="230" width="300" height="90" class="box" fill="#ffffff" stroke="#0a8f5b"/>
+  <text x="480" y="260" text-anchor="middle" class="title">Config + RoutingPlan</text>
+  <text x="480" y="282" text-anchor="middle" class="sub">entité ’ univers / canal DMX</text>
+  <text x="480" y="300" text-anchor="middle" class="sub">JSON · validate() · hot reload</text>
+
+  <!-- Zone Routage -->
+  <text x="810" y="80" text-anchor="middle" class="zone" fill="#c0392b">ROUTAGE (A)</text>
+  <rect x="750" y="95" width="180" height="90" class="box" fill="#fdecea" stroke="#c0392b"/>
+  <text x="840" y="130" text-anchor="middle" class="title">ArtNet / DMX</text>
+  <text x="840" y="152" text-anchor="middle" class="sub">encode + envoie</text>
+  <text x="840" y="170" text-anchor="middle" class="sub">UDP</text>
+
+  <!-- Matériel -->
+  <rect x="750" y="250" width="180" height="80" class="box" fill="#f0f0f4" stroke="#555"/>
+  <text x="840" y="284" text-anchor="middle" class="title">Matériel</text>
+  <text x="840" y="306" text-anchor="middle" class="sub">BC216 · LED · lyres</text>
+
+  <!-- Edges -->
+  <path class="edge" d="M210,150 L328,150"/>
+  <text x="268" y="142" text-anchor="middle" class="elabel">écrit (set)</text>
+
+  <path class="edge" d="M632,150 L748,150"/>
+  <text x="690" y="142" text-anchor="middle" class="elabel">lit (buffer)</text>
+
+  <path class="edge" d="M632,275 C700,275 720,200 748,175"/>
+  <text x="700" y="255" text-anchor="middle" class="elabel">où va l'entité N ?</text>
+
+  <path class="edge" d="M840,185 L840,248"/>
+  <text x="895" y="220" text-anchor="middle" class="elabel">UDP</text>
+
+  <text x="480" y="380" text-anchor="middle" class="sub">C ne connaît que des IDs de pixels · A ne connaît que le State + le plan · aucun ne connaît l'autre</text>
+  <text x="480" y="404" text-anchor="middle" class="sub">Même code pour : mur 2D · reconfiguration à chaud · araignée 3D  seule la config change</text>
+</svg>
