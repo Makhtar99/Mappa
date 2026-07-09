@@ -38,6 +38,13 @@ namespace Mappa.Ui
         /// <summary>Active l'emission ArtNet reelle (UDP) vers les controleurs.</summary>
         public volatile bool SendArtNet;
 
+        /// <summary>
+        /// Force le noir : le Faker est ignore et le State est remis a zero a
+        /// chaque frame. On continue d'emettre (les LED latchent la derniere
+        /// valeur recue : il faut leur envoyer du noir pour qu'elles s'eteignent).
+        /// </summary>
+        public volatile bool Blackout;
+
         /// <summary>Generateur de signal de test (null = on route le State tel quel).</summary>
         public IFaker? Faker { get; set; }
 
@@ -84,8 +91,44 @@ namespace Mappa.Ui
             _running = false;
             _thread?.Join(500);
             _thread = null;
+
+            // Le thread est arrete : plus personne ne touche au sender. Si on a
+            // emis pendant cette session, on eteint les LED avant de fermer :
+            // elles latchent leur derniere valeur et resteraient allumees.
+            // Test sur _sender (et pas sur SendArtNet) : decocher l'emission avant
+            // Stop laisse quand meme un mur allume, qu'il faut eteindre.
+            if (_sender != null) SendBlackout();
+
             _sender?.Dispose();
             _sender = null;
+        }
+
+        /// <summary>
+        /// Eteint tous les univers de la config. Repete quelques fois : l'ArtNet
+        /// passe en UDP, une frame noire perdue laisserait un univers allume.
+        /// </summary>
+        private void SendBlackout(int frames = 3)
+        {
+            Config config; int[] universes;
+            lock (_lock) { config = _config; universes = _universes; }
+
+            var black = new byte[Stride]; // lu seulement par SendPlan : partageable
+            var packets = new Dictionary<int, byte[]>(universes.Length);
+            foreach (int u in universes) packets[u] = black;
+
+            for (int i = 0; i < frames; i++)
+            {
+                try
+                {
+                    _sender!.SendPlan(config, packets);
+                    PacketsSent += packets.Count;
+                }
+                catch (Exception)
+                {
+                    return; // Extinction best-effort : ne jamais faire echouer un Stop().
+                }
+                if (i < frames - 1) Thread.Sleep(1000 / 40); // une periode de frame
+            }
         }
 
         private void Loop()
@@ -107,7 +150,15 @@ namespace Mappa.Ui
                     universes = _universes; snapshot = _snapshot;
                 }
 
-                Faker?.Fill(state);
+                if (Blackout)
+                {
+                    state.Clear();
+                    state.MarkUpdated();
+                }
+                else
+                {
+                    Faker?.Fill(state);
+                }
 
                 IReadOnlyDictionary<int, byte[]> packets = plan.Render(state);
 
