@@ -1,0 +1,23 @@
+# Build output
+bin/
+obj/
+
+# .NET
+*.user
+*.suo
+*.userprefs
+[Ll]og/
+[Tt]est[Rr]esult*/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# IDE / OS
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
