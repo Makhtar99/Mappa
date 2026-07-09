@@ -1,9 +1,0 @@
-.DS_Store
-
-# C# / .NET
-bin/
-obj/
-*.user
-
-# Artefact genere par la demo failover
-configs/wall_dual_after_failover.json

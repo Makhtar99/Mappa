@@ -1,0 +1,94 @@
+{
+  "version": 3,
+  "targets": {
+    "net8.0": {
+      "Mappa/1.0.0": {
+        "type": "project",
+        "framework": ".NETStandard,Version=v2.1",
+        "compile": {
+          "bin/placeholder/Mappa.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/Mappa.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "Mappa/1.0.0": {
+      "type": "project",
+      "path": "../Mappa/Mappa.csproj",
+      "msbuildProject": "../Mappa/Mappa.csproj"
+    }
+  },
+  "projectFileDependencyGroups": {
+    "net8.0": [
+      "Mappa >= 1.0.0"
+    ]
+  },
+  "packageFolders": {
+    "C:\\Users\\gauti\\.nuget\\packages\\": {}
+  },
+  "project": {
+    "version": "1.0.0",
+    "restore": {
+      "projectUniqueName": "C:\\Users\\gauti\\OneDrive\\Bureau\\Mappa\\csharp\\Mappa.Bench\\Mappa.Bench.csproj",
+      "projectName": "Mappa.Bench",
+      "projectPath": "C:\\Users\\gauti\\OneDrive\\Bureau\\Mappa\\csharp\\Mappa.Bench\\Mappa.Bench.csproj",
+      "packagesPath": "C:\\Users\\gauti\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\gauti\\OneDrive\\Bureau\\Mappa\\csharp\\Mappa.Bench\\obj\\",
+      "projectStyle": "PackageReference",
+      "configFilePaths": [
+        "C:\\Users\\gauti\\AppData\\Roaming\\NuGet\\NuGet.Config"
+      ],
+      "originalTargetFrameworks": [
+        "net8.0"
+      ],
+      "sources": {
+        "https://api.nuget.org/v3/index.json": {}
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "projectReferences": {
+            "C:\\Users\\gauti\\OneDrive\\Bureau\\Mappa\\csharp\\Mappa\\Mappa.csproj": {
+              "projectPath": "C:\\Users\\gauti\\OneDrive\\Bureau\\Mappa\\csharp\\Mappa\\Mappa.csproj"
+            }
+          }
+        }
+      },
+      "warningProperties": {
+        "warnAsError": [
+          "NU1605"
+        ]
+      },
+      "restoreAuditProperties": {
+        "enableAudit": "true",
+        "auditLevel": "low",
+        "auditMode": "direct"
+      }
+    },
+    "frameworks": {
+      "net8.0": {
+        "targetAlias": "net8.0",
+        "imports": [
+          "net461",
+          "net462",
+          "net47",
+          "net471",
+          "net472",
+          "net48",
+          "net481"
+        ],
+        "assetTargetFallback": true,
+        "warn": true,
+        "frameworkReferences": {
+          "Microsoft.NETCore.App": {
+            "privateAssets": "all"
+          }
+        },
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.422/PortableRuntimeIdentifierGraph.json"
+      }
+    }
+  }
+}
