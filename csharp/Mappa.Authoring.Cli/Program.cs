@@ -77,6 +77,8 @@ namespace Mappa.Authoring.Cli
             Console.WriteLine();
             Console.WriteLine($"Termine : {runner.FramesSent} frames en {sw.Elapsed.TotalSeconds:F1}s " +
                               $"(~{runner.FramesSent / sw.Elapsed.TotalSeconds:F1} fps).");
+            Console.WriteLine($"Erreurs d'envoi : {runner.SendErrors}" +
+                              (runner.LastError != null ? $" (derniere : {runner.LastError})" : ""));
             return 0;
         }
 

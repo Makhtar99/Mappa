@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Mappa;
 
 namespace Mappa.Authoring.Core
 {
@@ -12,7 +13,7 @@ namespace Mappa.Authoring.Core
 
     public static class EhubUniversePlan
     {
-        public const int DefaultMaxEntitiesPerMessage = 5000;
+        public const int DefaultMaxEntitiesPerMessage = 1400;
 
         public static List<EhubChunk> Build(IReadOnlyList<int> orderedIds, int maxPerMessage = DefaultMaxEntitiesPerMessage)
         {
