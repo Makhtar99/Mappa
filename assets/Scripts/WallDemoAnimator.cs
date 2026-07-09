@@ -2,26 +2,25 @@ using UnityEngine;
 
 public sealed class WallDemoAnimator : MonoBehaviour
 {
+    public Color color = Color.blue;
     public float speed = 0.5f;
-    public float scale = 5f;
-
-    private float _t;
+    public float waves = 2f;
 
     private void Update()
     {
         var f = EntityField.Instance;
         if (f == null) return;
 
-        _t += Time.deltaTime * speed;
+        float t = Time.time * speed;
         for (int i = 0; i < f.Ids.Length; i++)
         {
-            Vector2 uv = f.Norm[i];
-            float x = uv.x * scale;
-            float y = uv.y * scale;
-            float v = Mathf.Sin(x + _t) + Mathf.Sin(y - _t) + Mathf.Sin((x + y) * 0.5f + _t);
-            float h = Mathf.Repeat((v + 3f) / 6f, 1f);
-            Color c = Color.HSVToRGB(h, 1f, 1f);
-            f.SetColor(i, (Color32)c);
+            float x = f.Norm[i].x;
+            float b = 0.5f + 0.5f * Mathf.Sin((x * waves - t) * Mathf.PI * 2f);
+            f.SetColor(i, new Color32(
+                (byte)(color.r * b * 255f),
+                (byte)(color.g * b * 255f),
+                (byte)(color.b * b * 255f),
+                255));
         }
     }
 }
