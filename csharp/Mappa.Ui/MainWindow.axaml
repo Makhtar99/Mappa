@@ -27,12 +27,23 @@
                   HorizontalContentAlignment="Center"/>
         </StackPanel>
         <CheckBox x:Name="FakerChk" Content="Faker (démo arc-en-ciel)" IsChecked="True"/>
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock Text="Intensité" VerticalAlignment="Center" Foreground="#bbb"/>
+          <Slider x:Name="BrightnessSlider" Width="150"
+                  Minimum="0" Maximum="100" Value="30" TickFrequency="10"
+                  VerticalAlignment="Center"
+                  ToolTip.Tip="Luminosité de l'arc-en-ciel (composante V du HSV)."/>
+          <TextBlock x:Name="BrightnessText" Text="30 %" VerticalAlignment="Center"
+                     Foreground="#d0d0d0" Width="42"/>
+        </StackPanel>
         <CheckBox x:Name="EhubChk" Content="Recevoir eHuB (réseau)"/>
         <StackPanel Orientation="Horizontal" Spacing="8">
           <TextBlock Text="Port eHuB" VerticalAlignment="Center" Foreground="#bbb"/>
           <TextBox x:Name="EhubPortBox" Text="8765" Width="80"/>
         </StackPanel>
         <CheckBox x:Name="SendChk" Content="Émettre en ArtNet (UDP réel)"/>
+        <CheckBox x:Name="BlackoutChk" Content="⬛ Noir (blackout)"
+                  ToolTip.Tip="Ignore le Faker/eHuB et émet du noir sur tous les univers."/>
 
         <Border Height="1" Background="#333" Margin="0,4"/>
 
@@ -43,8 +54,8 @@
 
         <Border Height="1" Background="#333" Margin="0,4"/>
 
-        <TextBlock Text="Visualiseur DMX : 1 ligne = 1 univers, 1 case = 1 LED (RVB), avant encapsulation ArtNet."
-                   TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
+        <CheckBox x:Name="WallViewChk" Content="Vue mur (géométrie réelle)" IsChecked="True"/>
+        <TextBlock x:Name="LegendText" TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
 
       </StackPanel>
     </Border>
