@@ -1,13 +1,14 @@
-# Build output
+.DS_Store
+
+# C# / .NET
 bin/
 obj/
-
-# .NET
 *.user
 *.suo
-*.userprefs
-[Ll]og/
 [Tt]est[Rr]esult*/
+
+# Artefact genere par la demo failover
+configs/wall_dual_after_failover.json
 
 # Python
 __pycache__/
