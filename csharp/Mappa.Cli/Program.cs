@@ -34,6 +34,7 @@ internal static class Program
             case "failover": FailoverDemo(); return 0;
             case "show" when args.Length >= 2: Show(args[1]); return 0;
             case "send" when args.Length >= 2: return Send(args);
+            case "emit": return Emit(args);
             case "text" when args.Length >= 3: return TextCmd(args);
             case "scan": return Scan(args);
             case "pixel" when args.Length >= 2: return Pixel(args);
@@ -128,6 +129,19 @@ internal static class Program
         Console.WriteLine("    --sheet <feuille>  feuille a lire (defaut: la 1ere, ou 'eHuB' si presente).");
         Console.WriteLine();
         Console.WriteLine("  Exemple : mappa import panneau.xlsx --out ../configs/panneau.json");
+        Console.WriteLine();
+        Console.WriteLine("emit : FAUX EMITTER eHuB (debug). Joue le role d'Unity : envoie des");
+        Console.WriteLine("       paquets eHuB en UDP au routage, sans lancer Unity.");
+        Console.WriteLine("  Usage : mappa emit [options]");
+        Console.WriteLine("  Options :");
+        Console.WriteLine("    --host <ip>       destinataire (defaut: 127.0.0.1).");
+        Console.WriteLine("    --port <n>        port eHuB (defaut: 8765).");
+        Console.WriteLine("    --count <n>       entites 1..n a allumer (defaut: 10).");
+        Console.WriteLine("    --color <r,g,b>   couleur (defaut: 255,255,255 = blanc).");
+        Console.WriteLine("    --hz <n>          frequence d'envoi (defaut: 40).");
+        Console.WriteLine("    --frames <n>      nb de frames puis stop (defaut: illimite, Ctrl+C).");
+        Console.WriteLine();
+        Console.WriteLine("  Exemple : mappa emit --count 10 --color 255,255,255");
     }
 
     private static string ResolveConfigsDir()
@@ -420,6 +434,94 @@ internal static class Program
             System.Threading.Thread.Sleep(periodMs);
         }
         Console.WriteLine($"\nArrete apres {sent} frames. LEDs eteintes.");
+        return 0;
+    }
+
+    // ------------------------------------------------------------------ //
+    // emit : FAUX EMITTER eHuB (debug). Joue le role d'Unity SANS Unity.
+    //
+    // Fabrique un State, l'encode en paquets eHuB "Update" (Ehub.EncodeUpdate)
+    // et l'envoie en UDP au routage (EhubReceiver, port 8765). Sert a tester
+    // toute la chaine de reception/routage sans lancer Unity.
+    //
+    //   emit [options]
+    //     --host <ip>      destinataire        (defaut: 127.0.0.1)
+    //     --port <n>       port eHuB           (defaut: 8765)
+    //     --count <n>      entites 1..n a allumer (defaut: 10, comme l'exemple)
+    //     --color <r,g,b>  couleur             (defaut: 255,255,255 = blanc)
+    //     --hz <n>         frequence d'envoi   (defaut: 40)
+    //     --frames <n>     nb de frames puis stop (defaut: illimite, Ctrl+C)
+    //     --universe <n>   univers eHuB        (defaut: 0)
+    // ------------------------------------------------------------------ //
+    private static int Emit(string[] args)
+    {
+        string host = "127.0.0.1";
+        int port = Ehub.DefaultUdpPort;   // 8765
+        int count = 10;
+        byte r = 255, g = 255, b = 255;   // blanc = toutes les LED allumees
+        int hz = 40;
+        int? frames = null;
+        byte universe = 0;
+
+        for (int i = 1; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--host" when i + 1 < args.Length: host = args[++i]; break;
+                case "--port" when i + 1 < args.Length: port = int.Parse(args[++i]); break;
+                case "--count" when i + 1 < args.Length: count = int.Parse(args[++i]); break;
+                case "--hz" when i + 1 < args.Length: hz = int.Parse(args[++i]); break;
+                case "--frames" when i + 1 < args.Length: frames = int.Parse(args[++i]); break;
+                case "--universe" when i + 1 < args.Length: universe = byte.Parse(args[++i]); break;
+                case "--color" when i + 1 < args.Length:
+                    if (!TryParseColor(args[++i], out r, out g, out b)) return 1;
+                    break;
+                default: Console.Error.WriteLine($"Option inconnue : {args[i]}"); return 1;
+            }
+        }
+
+        // 1) Les entites a allumer : IDs 1..count (comme l'exemple du sujet).
+        var ids = Enumerable.Range(1, count).ToList();
+
+        // 2) Un State rempli avec la couleur voulue (= ce qu'Unity produirait).
+        var state = new State(ids);
+        foreach (int id in ids) state.SetRgb(id, r, g, b);
+        state.MarkUpdated();
+
+        // 3) Decoupage sous la limite d'un datagramme UDP : chaque entite = 6
+        //    octets (id + RVBW), on garde ~200 entites/paquet (<1400 octets, MTU).
+        const int maxPerPacket = 200;
+        var chunks = new List<List<int>>();
+        for (int i = 0; i < ids.Count; i += maxPerPacket)
+            chunks.Add(ids.GetRange(i, Math.Min(maxPerPacket, ids.Count - i)));
+
+        var addr = System.Net.IPAddress.TryParse(host, out var ip)
+            ? ip : System.Net.Dns.GetHostAddresses(host)[0];
+        var endpoint = new System.Net.IPEndPoint(addr, port);
+        using var udp = new System.Net.Sockets.UdpClient { EnableBroadcast = true };
+
+        Console.WriteLine($"Faux emitter eHuB -> {host}:{port}");
+        Console.WriteLine($"  {count} entites (1..{count}) en RVB=({r},{g},{b}), univers eHuB {universe}");
+        Console.WriteLine(frames.HasValue
+            ? $"  {frames} frame(s) a {hz} Hz"
+            : $"  boucle a {hz} Hz (Ctrl+C pour arreter)");
+
+        int periodMs = hz > 0 ? Math.Max(1, 1000 / hz) : 25;
+        bool running = true;
+        Console.CancelKeyPress += (_, e) => { e.Cancel = true; running = false; };
+
+        int sent = 0;
+        while (running && (!frames.HasValue || sent < frames.Value))
+        {
+            foreach (var chunk in chunks)
+            {
+                byte[] packet = Ehub.EncodeUpdate(universe, chunk, state);
+                udp.Send(packet, packet.Length, endpoint);
+            }
+            sent++;
+            System.Threading.Thread.Sleep(periodMs);
+        }
+        Console.WriteLine($"\n{sent} frame(s) eHuB envoyee(s).");
         return 0;
     }
 

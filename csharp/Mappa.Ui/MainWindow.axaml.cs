@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Avalonia;
 using Avalonia.Controls;
@@ -23,11 +24,23 @@ namespace Mappa.Ui
         private const int Cell = 4;        // taille d'une LED a l'ecran (px)
         private const int LedsPerRow = 170; // 512 / 3 = 170 LED RVB par univers
 
+        // Couleur du quadrillage des moniteurs (contour de chaque case).
+        private static readonly Avalonia.Media.IBrush GridBrush =
+            new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.FromRgb(0x55, 0x55, 0x60));
+        private static readonly Thickness GridLine = new Thickness(1);
+
         private RoutingEngine? _engine;
         private WriteableBitmap? _bmp;
         private byte[] _snap = Array.Empty<byte>();
         private int _bmpUniverseCount = -1;
         private readonly DispatcherTimer _uiTimer;
+
+        // Débogage : récepteur eHuB du nœud ①. Les moniteurs affichent ce qu'il
+        // reçoit (rien tant qu'aucun eHuB n'arrive).
+        private EhubReceiver? _debugRx;
+        private int _debugRxPort = -1;
+        private long _lastRxPainted = -1;
+        private bool _debugDirty = true;
 
         public MainWindow()
         {
@@ -45,6 +58,11 @@ namespace Mappa.Ui
             };
             FakerChk.IsCheckedChanged += (_, _) => UpdateFaker();
             EhubChk.IsCheckedChanged += (_, _) => UpdateFaker();
+            ListenBtn.Click += (_, _) => ToggleListen();
+            GroupShowBtn.Click += (_, _) => SimulateUnity();
+            FormatBox.SelectionChanged += (_, _) => _debugDirty = true;
+            GroupStartBox.TextChanged += (_, _) => _debugDirty = true;
+            GroupEndBox.TextChanged += (_, _) => _debugDirty = true;
 
             _uiTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
             _uiTimer.Tick += (_, _) => OnUiTick();
@@ -123,6 +141,11 @@ namespace Mappa.Ui
             StopRouting();
             _engine = new RoutingEngine(cfg) { SendArtNet = SendChk.IsChecked ?? false };
             UpdateFaker();
+
+            // Confort : pre-remplir l'IP de test avec le 1er controleur de la
+            // config (si le champ est vide). On peut toujours la taper a la main.
+            if (string.IsNullOrWhiteSpace(TestIpBox.Text) && cfg.Controllers.Count > 0)
+                TestIpBox.Text = cfg.Controllers[0].Ip;
             _bmp = null;
             _bmpUniverseCount = -1;
 
@@ -186,11 +209,203 @@ namespace Mappa.Ui
             }
         }
 
+        /// <summary>
+        /// Nœud ① : démarre/arrête l'écoute eHuB sur le port saisi. Tant qu'on
+        /// n'écoute pas (ou que rien n'arrive), les moniteurs restent vides.
+        /// </summary>
+        private void ToggleListen()
+        {
+            if (_debugRx == null)
+            {
+                int port = int.TryParse(InPortBox.Text, out var p) ? p : Ehub.DefaultUdpPort;
+                try { _debugRx = new EhubReceiver(port); }
+                catch (Exception ex) { Status("Écoute eHuB impossible : " + ex.Message); return; }
+                ListenBtn.Content = "■ Stop";
+                RxInfo.Text = "à l'écoute…";
+            }
+            else
+            {
+                _debugRx.Dispose();
+                _debugRx = null;
+                ListenBtn.Content = "▶ Écouter";
+                RxInfo.Text = "arrêté";
+            }
+            _debugDirty = true;
+        }
+
+        /// <summary>
+        /// Faker : simule Unity en envoyant UNE frame eHuB (plage + couleur saisies)
+        /// vers le port d'écoute. Sert à tester la chaîne sans Unity.
+        /// </summary>
+        private void SimulateUnity()
+        {
+            if (!int.TryParse(GroupStartBox.Text, out int start) ||
+                !int.TryParse(GroupEndBox.Text, out int end) || end < start)
+            {
+                Status("Plage invalide : Start ID doit être ≤ End ID.");
+                return;
+            }
+
+            var parts = (GroupColorBox.Text ?? "").Split(',');
+            if (parts.Length != 3 ||
+                !byte.TryParse(parts[0].Trim(), out byte r) ||
+                !byte.TryParse(parts[1].Trim(), out byte g) ||
+                !byte.TryParse(parts[2].Trim(), out byte b))
+            {
+                Status("Couleur invalide : format R,V,B (ex : 255,255,0).");
+                return;
+            }
+
+            int port = int.TryParse(InPortBox.Text, out var p) ? p : Ehub.DefaultUdpPort;
+            var ids = new List<int>();
+            for (int id = start; id <= end; id++) ids.Add(id);
+            var st = new State(ids);
+            foreach (int id in ids) st.Set(id, r, g, b);
+
+            try
+            {
+                byte[] packet = Ehub.EncodeUpdate(0, ids, st);
+                using var udp = new System.Net.Sockets.UdpClient();
+                udp.Send(packet, packet.Length,
+                    new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, port));
+                Status(_debugRx == null
+                    ? "Frame eHuB simulée envoyée — clique « ▶ Écouter » pour la voir."
+                    : "Frame eHuB simulée envoyée.");
+            }
+            catch (Exception ex) { Status("Envoi eHuB simulé impossible : " + ex.Message); }
+        }
+
+        /// <summary>
+        /// Appelé à chaque tick : rafraîchit les moniteurs ②③④ avec ce qui a été
+        /// REÇU en eHuB. Rien reçu (ou pas à l'écoute) => moniteurs vides.
+        /// </summary>
+        private void UpdateDebugMonitors()
+        {
+            long rx = _debugRx?.PacketsReceived ?? 0;
+            if (!_debugDirty && rx == _lastRxPainted) return;
+            _debugDirty = false;
+            _lastRxPainted = rx;
+
+            // Rien reçu -> on n'affiche rien.
+            if (_debugRx == null || rx == 0)
+            {
+                LedMonitor.Children.Clear();
+                DmxMonitor.Children.Clear();
+                ArtNetMonitor.Children.Clear();
+                return;
+            }
+
+            if (!int.TryParse(GroupStartBox.Text, out int start) ||
+                !int.TryParse(GroupEndBox.Text, out int end) || end < start)
+                return;
+
+            // On lit les couleurs REÇUES pour les entités de la plage.
+            var ids = new List<int>();
+            for (int id = start; id <= end; id++) ids.Add(id);
+            var state = new State(ids);
+            _debugRx.Fill(state);
+
+            PaintPipeline(state, start, end);
+            RxInfo.Text = $"reçu : {rx} paquet(s)";
+        }
+
+        /// <summary>
+        /// Dessine les moniteurs ② (1 case = 1 LED), ③ (canaux selon le format)
+        /// et ④ (trame DMX) à partir des couleurs REÇUES dans <paramref name="state"/>.
+        /// </summary>
+        private void PaintPipeline(State state, int start, int end)
+        {
+            LedMonitor.Children.Clear();
+            DmxMonitor.Children.Clear();
+
+            var dmx = new byte[Config.DmxChannelsPerUniverse];
+            int used = 0;
+            for (int id = start; id <= end; id++)
+            {
+                var c = state.Get(id); // couleur reçue (noir si cette entité n'a rien reçu)
+                LedMonitor.Children.Add(LedCell(new Avalonia.Media.SolidColorBrush(
+                    Avalonia.Media.Color.FromRgb(c.R, c.G, c.B))));
+
+                byte[] chans = ChannelsFor(c.R, c.G, c.B);
+                for (int k = 0; k < chans.Length; k++)
+                {
+                    DmxMonitor.Children.Add(DmxSquare(chans[k], k == chans.Length - 1 ? 5 : 0));
+                    if (used < dmx.Length) dmx[used++] = chans[k];
+                }
+            }
+            PaintArtNetMonitor(dmx, used);
+        }
+
+        /// <summary>
+        /// Canaux DMX d'une LED selon son type (nœud ③) : certaines LED n'ont
+        /// qu'un seul canal (mono), d'autres 3 (RGB), parfois dans l'ordre GRB.
+        /// </summary>
+        private byte[] ChannelsFor(byte r, byte g, byte b)
+        {
+            string fmt = (FormatBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "RGB";
+            return fmt switch
+            {
+                "GRB" => new byte[] { g, r, b },
+                "Mono (R)" => new byte[] { r },
+                _ => new byte[] { r, g, b },   // RGB
+            };
+        }
+
+        /// <summary>
+        /// Moniteur du nœud ④ : dessine les <paramref name="count"/> premiers
+        /// canaux de la trame DMX qui part (ou partirait) en ArtNet.
+        /// 1 carré = 1 canal, niveau de gris = intensité (0 éteint → 255 blanc).
+        /// </summary>
+        private void PaintArtNetMonitor(byte[] dmx, int count)
+        {
+            ArtNetMonitor.Children.Clear();
+            count = Math.Min(count, dmx.Length);
+            for (int i = 0; i < count; i++)
+            {
+                byte v = dmx[i];
+                ArtNetMonitor.Children.Add(new Border
+                {
+                    Width = 12,
+                    Height = 12,
+                    Margin = new Thickness(1),
+                    Background = new Avalonia.Media.SolidColorBrush(
+                        Avalonia.Media.Color.FromRgb(v, v, v)),
+                    BorderBrush = GridBrush,
+                    BorderThickness = GridLine,
+                });
+            }
+        }
+
+        /// <summary>Une case LED (16x16) de la couleur donnée, avec contour de grille.</summary>
+        private static Border LedCell(Avalonia.Media.IBrush brush) => new Border
+        {
+            Width = 16,
+            Height = 16,
+            Margin = new Thickness(1),
+            Background = brush,
+            BorderBrush = GridBrush,
+            BorderThickness = GridLine,
+        };
+
+        /// <summary>Un carré DMX : luminosité (gris) = valeur du canal (0 éteint, 255 blanc).</summary>
+        private static Border DmxSquare(byte value, double rightMargin) => new Border
+        {
+            Width = 8,
+            Height = 14,
+            Margin = new Thickness(1, 1, rightMargin, 1),
+            Background = new Avalonia.Media.SolidColorBrush(
+                Avalonia.Media.Color.FromRgb(value, value, value)),
+            BorderBrush = GridBrush,
+            BorderThickness = GridLine,
+        };
+
         // ------------------------------------------------------------------ //
         // Boucle d'affichage (thread UI)
         // ------------------------------------------------------------------ //
         private void OnUiTick()
         {
+            UpdateDebugMonitors(); // onglet Débogage : marche même sans config chargée
+
             if (_engine == null) return;
 
             _engine.CopySnapshot(ref _snap, out int stride, out var universes);
@@ -283,6 +498,7 @@ namespace Mappa.Ui
             _uiTimer.Stop();
             _engine?.Dispose();
             _ehubFaker?.Dispose();
+            _debugRx?.Dispose();
             base.OnClosed(e);
         }
     }
