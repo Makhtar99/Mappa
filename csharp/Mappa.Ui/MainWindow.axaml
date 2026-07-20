@@ -76,62 +76,95 @@
 
       <!-- ============ ONGLET 2 : DEBOGAGE ============ -->
       <TabItem Header="Débogage">
-        <ScrollViewer VerticalScrollBarVisibility="Auto" Background="#141418">
-          <StackPanel Spacing="10" Margin="14" MaxWidth="360" HorizontalAlignment="Left">
+        <DockPanel Background="#141418">
+          <TextBlock DockPanel.Dock="Top" Margin="14,10,14,0"
+                     Text="Lis les nœuds de GAUCHE à DROITE : le 1er moniteur faux = l'étape qui bugue."
+                     TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
+          <ScrollViewer x:Name="DebugScrollViewer" HorizontalScrollBarVisibility="Auto"
+                        VerticalScrollBarVisibility="Auto">
+            <StackPanel Orientation="Horizontal" Spacing="10" Margin="14" VerticalAlignment="Top">
 
-            <TextBlock Text="Lis les moniteurs de haut en bas : le 1er qui est faux = l'étape qui bugue."
-                       TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
-
-            <!-- ═══ Étape ① : Unity to Emitters ═══ -->
-            <Border Background="#202028" BorderBrush="#3a3a44" BorderThickness="1"
-                    CornerRadius="6" Padding="8">
+            <!-- ═══ Simulation UDP (source de test = faux Unity) ═══ -->
+            <Border Background="#1d1d24" BorderBrush="#3a3a44" BorderThickness="1"
+                    CornerRadius="6" Padding="8" Width="250" VerticalAlignment="Top">
               <StackPanel Spacing="6">
-                <TextBlock Text="① Unity to Emitters" FontWeight="Bold" Foreground="#e0e0e0"/>
+                <TextBlock Text="Simulation UDP (faux Unity)" FontWeight="Bold" Foreground="#e0e0e0"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Port" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="SimPortBox" Text="8765" Width="70"/>
+                  <TextBlock Text="Univers" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="SimUniverseBox" Text="1" Width="48"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Start" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="SimStartBox" Text="1" Width="48"/>
+                  <TextBlock Text="End" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="SimEndBox" Text="10" Width="48"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="R,V,B" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="SimColorBox" Text="255,255,0" Width="120"/>
+                </StackPanel>
+                <Button x:Name="SimulateUnityBtn" Content="Simuler Unity (UDP)"/>
+                <TextBlock Text="Envoie une frame eHuB de test vers ① (à droite)."
+                           TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
+              </StackPanel>
+            </Border>
+            <TextBlock Text="→" VerticalAlignment="Center" Foreground="#666" FontSize="18"/>
+
+            <!-- ═══ Étape ① : Réception UDP ═══ -->
+            <Border Background="#202028" BorderBrush="#3a3a44" BorderThickness="1"
+                    CornerRadius="6" Padding="8" Width="250" VerticalAlignment="Top">
+              <StackPanel Spacing="6">
+                <TextBlock Text="① Réception UDP" FontWeight="Bold" Foreground="#e0e0e0"/>
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <TextBlock Text="Port" VerticalAlignment="Center" Foreground="#bbb"/>
                   <TextBox x:Name="InPortBox" Text="8765" Width="70"/>
                   <TextBlock Text="Univers" VerticalAlignment="Center" Foreground="#bbb"/>
-                  <TextBox x:Name="InUniverseBox" Text="1" Width="48"/>
+                  <TextBox x:Name="UniverseFilterBox" Watermark="tous" Width="56"/>
                 </StackPanel>
-                <TextBlock Text="écoute l'eHuB (config + update) → produit un tableau {entité, couleur} pour l'étape ②"
-                           TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <Button x:Name="ListenBtn" Content="▶ Écouter"/>
                   <TextBlock x:Name="RxInfo" Text="—" VerticalAlignment="Center"
                              Foreground="#888" FontSize="11"/>
                 </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Paquets" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBlock x:Name="PacketCountText" Text="0" VerticalAlignment="Center"
+                             Foreground="#d0d0d0" FontWeight="Bold"/>
+                </StackPanel>
+                <TextBlock Text="Le filtre univers limite la liste affichée; tu peux ensuite inspecter un paquet reçu."
+                           TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
+                <Border Background="#000" Padding="4" CornerRadius="3">
+                  <ListBox x:Name="PacketListBox" Background="#000" BorderThickness="0" Foreground="#ddd"/>
+                </Border>
               </StackPanel>
             </Border>
-            <TextBlock Text="↓" HorizontalAlignment="Center" Foreground="#666" FontSize="16"/>
+            <TextBlock Text="→" VerticalAlignment="Center" Foreground="#666" FontSize="18"/>
 
-            <!-- ═══ Étape ② : Emitter Group ═══ -->
+            <!-- ═══ Étape ② : Détail paquet ═══ -->
             <Border Background="#202028" BorderBrush="#3a3a44" BorderThickness="1"
-                    CornerRadius="6" Padding="8">
+                    CornerRadius="6" Padding="8" Width="250" VerticalAlignment="Top">
               <StackPanel Spacing="6">
-                <TextBlock Text="② Emitter Group" FontWeight="Bold" Foreground="#e0e0e0"/>
+                <TextBlock Text="② Détail du paquet" FontWeight="Bold" Foreground="#e0e0e0"/>
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <TextBlock Text="Start" VerticalAlignment="Center" Foreground="#bbb"/>
-                  <TextBox x:Name="GroupStartBox" Text="1" Width="48"/>
+                  <TextBox x:Name="FilterStartBox" Text="1" Width="48"/>
                   <TextBlock Text="End" VerticalAlignment="Center" Foreground="#bbb"/>
-                  <TextBox x:Name="GroupEndBox" Text="10" Width="48"/>
+                  <TextBox x:Name="FilterEndBox" Text="10" Width="48"/>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                  <TextBlock Text="R,V,B" VerticalAlignment="Center" Foreground="#bbb"/>
-                  <TextBox x:Name="GroupColorBox" Text="255,255,0" Width="100"/>
-                  <Button x:Name="GroupShowBtn" Content="Simuler"/>
-                </StackPanel>
-                <TextBlock Text="Start/End = filtre. « Simuler » = faux Unity (envoie une frame eHuB). Moniteur : 1 case = 1 LED reçue."
-                           TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
+                <TextBlock Text="Start/End = plage d'IDs de l'univers sélectionné à inspecter."
+                           Foreground="#888" FontSize="11"/>
                 <Border Background="#000" Padding="4" CornerRadius="3">
                   <WrapPanel x:Name="LedMonitor"/>
                 </Border>
               </StackPanel>
             </Border>
-            <TextBlock Text="↓" HorizontalAlignment="Center" Foreground="#666" FontSize="16"/>
+            <TextBlock Text="→" VerticalAlignment="Center" Foreground="#666" FontSize="18"/>
 
             <!-- ═══ Étape ③ : Emitter Group → DMX ═══ -->
             <Border Background="#202028" BorderBrush="#3a3a44" BorderThickness="1"
-                    CornerRadius="6" Padding="8">
+                    CornerRadius="6" Padding="8" Width="250" VerticalAlignment="Top">
               <StackPanel Spacing="6">
                 <TextBlock Text="③ Emitter Group → DMX" FontWeight="Bold" Foreground="#e0e0e0"/>
                 <StackPanel Orientation="Horizontal" Spacing="6">
@@ -149,31 +182,38 @@
                 </Border>
               </StackPanel>
             </Border>
-            <TextBlock Text="↓" HorizontalAlignment="Center" Foreground="#666" FontSize="16"/>
+            <TextBlock Text="→" VerticalAlignment="Center" Foreground="#666" FontSize="18"/>
 
             <!-- ═══ Étape ④ : DMX → ArtNet ═══ -->
             <Border Background="#202028" BorderBrush="#3a3a44" BorderThickness="1"
-                    CornerRadius="6" Padding="8">
+                    CornerRadius="6" Padding="8" Width="250" VerticalAlignment="Top">
               <StackPanel Spacing="6">
                 <TextBlock Text="④ DMX → ArtNet" FontWeight="Bold" Foreground="#e0e0e0"/>
                 <StackPanel Orientation="Horizontal" Spacing="6">
-                  <TextBlock Text="IP" VerticalAlignment="Center" Foreground="#bbb" Width="48"/>
-                  <TextBox x:Name="TestIpBox" Watermark="ex : 10.0.0.1" Width="150"/>
+                  <TextBlock Text="Univers" VerticalAlignment="Center" Foreground="#bbb" Width="52"/>
+                  <TextBox x:Name="TestUniverseBox" Text="0" Width="60"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="6">
-                  <TextBlock Text="Univers" VerticalAlignment="Center" Foreground="#bbb" Width="48"/>
-                  <TextBox x:Name="TestUniverseBox" Text="0" Width="48"/>
+                  <TextBlock Text="IP" VerticalAlignment="Center" Foreground="#bbb" Width="52"/>
+                  <TextBox x:Name="TestIpBox" Watermark="ex : 10.0.0.1" Width="150"/>
                 </StackPanel>
-                <TextBlock Text="moniteur : trame DMX qui SERAIT envoyée (visuel seul — cette page n'envoie rien)"
+                <TextBlock x:Name="Node4Hint" Text="" Foreground="#8ab4f8" FontSize="11"/>
+                <TextBlock Text="IP pré-remplie depuis la config (univers → contrôleur), modifiable. La trame part vers cette IP."
                            TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
                 <Border Background="#000" Padding="4" CornerRadius="3">
                   <WrapPanel x:Name="ArtNetMonitor" Width="224"/>
                 </Border>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Button x:Name="SendFrameBtn" Content="Envoyer la trame"/>
+                  <Button x:Name="TestWhiteBtn" Content="WHITE" Width="66"/>
+                  <Button x:Name="TestBlackBtn" Content="BLACK" Width="66"/>
+                </StackPanel>
               </StackPanel>
             </Border>
 
-          </StackPanel>
-        </ScrollViewer>
+            </StackPanel>
+          </ScrollViewer>
+        </DockPanel>
       </TabItem>
 
     </TabControl>

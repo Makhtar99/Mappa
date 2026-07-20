@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using Avalonia;
 using Avalonia.Controls;
@@ -30,17 +31,21 @@ namespace Mappa.Ui
         private static readonly Thickness GridLine = new Thickness(1);
 
         private RoutingEngine? _engine;
+        private Config? _config;            // config chargée (pour résoudre univers → IP au nœud ④)
         private WriteableBitmap? _bmp;
         private byte[] _snap = Array.Empty<byte>();
         private int _bmpUniverseCount = -1;
         private readonly DispatcherTimer _uiTimer;
+        private readonly ObservableCollection<EhubReceiver.PacketSnapshot> _packetItems = new ObservableCollection<EhubReceiver.PacketSnapshot>();
 
         // Débogage : récepteur eHuB du nœud ①. Les moniteurs affichent ce qu'il
         // reçoit (rien tant qu'aucun eHuB n'arrive).
         private EhubReceiver? _debugRx;
-        private int _debugRxPort = -1;
         private long _lastRxPainted = -1;
         private bool _debugDirty = true;
+        private string? _selectedPacketKey;
+        private string? _lastUniverseFilterText;
+        private byte[]? _lastDmx;           // dernière trame DMX affichée (pour « Envoyer la trame »)
 
         public MainWindow()
         {
@@ -59,14 +64,27 @@ namespace Mappa.Ui
             FakerChk.IsCheckedChanged += (_, _) => UpdateFaker();
             EhubChk.IsCheckedChanged += (_, _) => UpdateFaker();
             ListenBtn.Click += (_, _) => ToggleListen();
-            GroupShowBtn.Click += (_, _) => SimulateUnity();
+            SimulateUnityBtn.Click += (_, _) => SimulateUnity();
+            PacketListBox.ItemsSource = _packetItems;
+            PacketListBox.SelectionChanged += (_, _) =>
+            {
+                _selectedPacketKey = (PacketListBox.SelectedItem as EhubReceiver.PacketSnapshot)?.Key;
+                _debugDirty = true;
+            };
             FormatBox.SelectionChanged += (_, _) => _debugDirty = true;
-            GroupStartBox.TextChanged += (_, _) => _debugDirty = true;
-            GroupEndBox.TextChanged += (_, _) => _debugDirty = true;
+            FilterStartBox.TextChanged += (_, _) => _debugDirty = true;
+            FilterEndBox.TextChanged += (_, _) => _debugDirty = true;
+            UniverseFilterBox.TextChanged += (_, _) => _debugDirty = true;
+            TestUniverseBox.TextChanged += (_, _) => RefreshNode4Ip();
+            SendFrameBtn.Click += (_, _) => SendArtNet(_lastDmx ?? FullFrame(0));
+            TestWhiteBtn.Click += (_, _) => SendArtNet(FullFrame(255));
+            TestBlackBtn.Click += (_, _) => SendArtNet(FullFrame(0));
 
             _uiTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
             _uiTimer.Tick += (_, _) => OnUiTick();
             _uiTimer.Start();
+
+            RefreshNode4Ip(); // affiche « charge une config » au démarrage
         }
 
         // ------------------------------------------------------------------ //
@@ -139,13 +157,10 @@ namespace Mappa.Ui
             }
 
             StopRouting();
+            _config = cfg;                       // dispo pour le nœud ④ (résolution univers → IP)
             _engine = new RoutingEngine(cfg) { SendArtNet = SendChk.IsChecked ?? false };
             UpdateFaker();
-
-            // Confort : pre-remplir l'IP de test avec le 1er controleur de la
-            // config (si le champ est vide). On peut toujours la taper a la main.
-            if (string.IsNullOrWhiteSpace(TestIpBox.Text) && cfg.Controllers.Count > 0)
-                TestIpBox.Text = cfg.Controllers[0].Ip;
+            RefreshNode4Ip();                    // met à jour « univers → contrôleur » du débogage
             _bmp = null;
             _bmpUniverseCount = -1;
 
@@ -222,6 +237,8 @@ namespace Mappa.Ui
                 catch (Exception ex) { Status("Écoute eHuB impossible : " + ex.Message); return; }
                 ListenBtn.Content = "■ Stop";
                 RxInfo.Text = "à l'écoute…";
+                _packetItems.Clear();
+                PacketCountText.Text = "0";
             }
             else
             {
@@ -229,24 +246,32 @@ namespace Mappa.Ui
                 _debugRx = null;
                 ListenBtn.Content = "▶ Écouter";
                 RxInfo.Text = "arrêté";
+                _packetItems.Clear();
+                PacketCountText.Text = "0";
             }
             _debugDirty = true;
         }
 
         /// <summary>
-        /// Faker : simule Unity en envoyant UNE frame eHuB (plage + couleur saisies)
-        /// vers le port d'écoute. Sert à tester la chaîne sans Unity.
+        /// Simulation minimale : envoie une frame eHuB locale avec la plage et la couleur saisies.
+        /// Elle sert juste à générer du trafic de test, sans modifier le monitor de réception.
         /// </summary>
         private void SimulateUnity()
         {
-            if (!int.TryParse(GroupStartBox.Text, out int start) ||
-                !int.TryParse(GroupEndBox.Text, out int end) || end < start)
+            if (!int.TryParse(SimStartBox.Text, out int start) ||
+                !int.TryParse(SimEndBox.Text, out int end) || end < start)
             {
                 Status("Plage invalide : Start ID doit être ≤ End ID.");
                 return;
             }
 
-            var parts = (GroupColorBox.Text ?? "").Split(',');
+            if (!byte.TryParse(SimUniverseBox.Text, out byte ehubUniverse))
+            {
+                Status("Univers eHuB invalide : entre 0 et 255.");
+                return;
+            }
+
+            var parts = (SimColorBox.Text ?? "").Split(',');
             if (parts.Length != 3 ||
                 !byte.TryParse(parts[0].Trim(), out byte r) ||
                 !byte.TryParse(parts[1].Trim(), out byte g) ||
@@ -256,7 +281,7 @@ namespace Mappa.Ui
                 return;
             }
 
-            int port = int.TryParse(InPortBox.Text, out var p) ? p : Ehub.DefaultUdpPort;
+            int port = int.TryParse(SimPortBox.Text, out var p) ? p : Ehub.DefaultUdpPort;
             var ids = new List<int>();
             for (int id = start; id <= end; id++) ids.Add(id);
             var st = new State(ids);
@@ -264,15 +289,16 @@ namespace Mappa.Ui
 
             try
             {
-                byte[] packet = Ehub.EncodeUpdate(0, ids, st);
+                byte[] packet = Ehub.EncodeUpdate(ehubUniverse, ids, st);
                 using var udp = new System.Net.Sockets.UdpClient();
                 udp.Send(packet, packet.Length,
                     new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, port));
-                Status(_debugRx == null
-                    ? "Frame eHuB simulée envoyée — clique « ▶ Écouter » pour la voir."
-                    : "Frame eHuB simulée envoyée.");
+                Status("Frame eHuB simulée envoyée.");
             }
-            catch (Exception ex) { Status("Envoi eHuB simulé impossible : " + ex.Message); }
+            catch (Exception ex)
+            {
+                Status("Envoi eHuB simulé impossible : " + ex.Message);
+            }
         }
 
         /// <summary>
@@ -289,24 +315,105 @@ namespace Mappa.Ui
             // Rien reçu -> on n'affiche rien.
             if (_debugRx == null || rx == 0)
             {
+                _packetItems.Clear();
+                _selectedPacketKey = null;
+                PacketCountText.Text = "0";
                 LedMonitor.Children.Clear();
                 DmxMonitor.Children.Clear();
                 ArtNetMonitor.Children.Clear();
                 return;
             }
 
-            if (!int.TryParse(GroupStartBox.Text, out int start) ||
-                !int.TryParse(GroupEndBox.Text, out int end) || end < start)
+            var packets = _debugRx.SnapshotPackets();
+            string universeFilterText = (UniverseFilterBox.Text ?? string.Empty).Trim();
+            byte? universeFilter = TryParseByte(universeFilterText);
+            var visiblePackets = new List<EhubReceiver.PacketSnapshot>(packets.Count);
+            for (int i = 0; i < packets.Count; i++)
+            {
+                var packet = packets[i];
+                if (universeFilter.HasValue && packet.Universe != universeFilter.Value) continue;
+                visiblePackets.Add(packet);
+            }
+
+            SyncPacketList(visiblePackets, universeFilterText);
+            PacketCountText.Text = visiblePackets.Count.ToString();
+
+            var selectedPacket = GetSelectedPacket(visiblePackets) ?? GetLastPacket(visiblePackets);
+            if (selectedPacket == null)
+            {
+                LedMonitor.Children.Clear();
+                DmxMonitor.Children.Clear();
+                ArtNetMonitor.Children.Clear();
+                RxInfo.Text = $"reçu : {rx} paquet(s)";
+                return;
+            }
+
+            if (!ReferenceEquals(PacketListBox.SelectedItem, selectedPacket))
+                PacketListBox.SelectedItem = selectedPacket;
+
+            if (!int.TryParse(FilterStartBox.Text, out int start) ||
+                !int.TryParse(FilterEndBox.Text, out int end) || end < start)
                 return;
 
-            // On lit les couleurs REÇUES pour les entités de la plage.
-            var ids = new List<int>();
-            for (int id = start; id <= end; id++) ids.Add(id);
-            var state = new State(ids);
-            _debugRx.Fill(state);
+            PaintPipeline(selectedPacket.ToState(), start, end);
+            RxInfo.Text = $"reçu : {rx} paquet(s) - {selectedPacket.RemoteEndPoint.Address} u{selectedPacket.Universe}";
+        }
 
-            PaintPipeline(state, start, end);
-            RxInfo.Text = $"reçu : {rx} paquet(s)";
+        private void SyncPacketList(IReadOnlyList<EhubReceiver.PacketSnapshot> packets, string universeFilterText)
+        {
+            bool filterChanged = !string.Equals(_lastUniverseFilterText, universeFilterText, StringComparison.Ordinal);
+            _lastUniverseFilterText = universeFilterText;
+
+            if (filterChanged || packets.Count < _packetItems.Count)
+            {
+                string? selectedKey = _selectedPacketKey;
+                _packetItems.Clear();
+                for (int i = 0; i < packets.Count; i++)
+                {
+                    _packetItems.Add(packets[i]);
+                }
+
+                if (selectedKey == null) return;
+
+                for (int i = 0; i < _packetItems.Count; i++)
+                {
+                    if (_packetItems[i].Key == selectedKey)
+                    {
+                        PacketListBox.SelectedIndex = i;
+                        return;
+                    }
+                }
+
+                _selectedPacketKey = null;
+                return;
+            }
+
+            for (int i = _packetItems.Count; i < packets.Count; i++)
+            {
+                _packetItems.Add(packets[i]);
+            }
+        }
+
+        private EhubReceiver.PacketSnapshot? GetSelectedPacket(IReadOnlyList<EhubReceiver.PacketSnapshot> packets)
+        {
+            if (string.IsNullOrEmpty(_selectedPacketKey)) return null;
+
+            for (int i = 0; i < packets.Count; i++)
+            {
+                if (packets[i].Key == _selectedPacketKey)
+                    return packets[i];
+            }
+
+            return null;
+        }
+
+        private static EhubReceiver.PacketSnapshot? GetLastPacket(IReadOnlyList<EhubReceiver.PacketSnapshot> packets)
+            => packets.Count > 0 ? packets[packets.Count - 1] : null;
+
+        private static byte? TryParseByte(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            return byte.TryParse(text.Trim(), out byte value) ? value : null;
         }
 
         /// <summary>
@@ -334,6 +441,41 @@ namespace Mappa.Ui
                 }
             }
             PaintArtNetMonitor(dmx, used);
+            _lastDmx = dmx;   // mémorisée pour « Envoyer la trame »
+        }
+
+        /// <summary>Une trame DMX de 512 canaux, tous à <paramref name="level"/> (255 = blanc, 0 = noir).</summary>
+        private static byte[] FullFrame(byte level)
+        {
+            var dmx = new byte[Config.DmxChannelsPerUniverse];
+            if (level != 0) Array.Fill(dmx, level);
+            return dmx;
+        }
+
+        /// <summary>
+        /// Nœud ④ : envoie VRAIMENT une trame DMX en ArtNet vers l'IP + univers
+        /// saisis. C'est la fonction d'émission du débogage (validée par le prof).
+        /// </summary>
+        private void SendArtNet(byte[] dmx)
+        {
+            string ip = TestIpBox.Text?.Trim() ?? "";
+            if (string.IsNullOrEmpty(ip))
+            {
+                Status("Renseigne une IP dans le nœud ④ avant d'envoyer.");
+                return;
+            }
+            int universe = int.TryParse(TestUniverseBox.Text, out var u) ? u : 0;
+            try
+            {
+                using var sender = new ArtNetSender();
+                // 3 trames d'affilée : certains contrôleurs ignorent un paquet isolé.
+                for (int i = 0; i < 3; i++) sender.Send(ip, universe, dmx);
+                Status($"ArtNet envoyé à {ip}, univers {universe}.");
+            }
+            catch (Exception ex)
+            {
+                Status("Envoi ArtNet impossible : " + ex.Message);
+            }
         }
 
         /// <summary>
@@ -349,6 +491,46 @@ namespace Mappa.Ui
                 "Mono (R)" => new byte[] { r },
                 _ => new byte[] { r, g, b },   // RGB
             };
+        }
+
+        /// <summary>
+        /// Nœud ④ : affiche vers quelle IP (contrôleur) partirait l'univers saisi,
+        /// résolu DEPUIS LA CONFIG (univers → contrôleur → IP). Lecture seule :
+        /// c'est un vérificateur. Il signale les univers « non routés » (aucun
+        /// contrôleur ne les prend), un bug de config classique à débusquer.
+        /// </summary>
+        private void RefreshNode4Ip()
+        {
+            if (!int.TryParse(TestUniverseBox.Text, out int uni) || _config == null)
+            {
+                Node4Hint.Text = _config == null ? "(charge une config pour l'IP auto)" : "";
+                return;
+            }
+            var res = ResolveController(uni);
+            if (res.HasValue)
+            {
+                TestIpBox.Text = res.Value.ip;                       // pré-remplit (modifiable)
+                Node4Hint.Text = $"→ {res.Value.id} (depuis la config)";
+            }
+            else
+            {
+                Node4Hint.Text = "⚠ univers non routé dans la config";
+            }
+        }
+
+        /// <summary>Cherche dans la config le contrôleur (IP + id) d'un univers donné.</summary>
+        private (string ip, string id)? ResolveController(int universe)
+        {
+            if (_config == null) return null;
+            foreach (var u in _config.Universes)
+            {
+                if (u.Index == universe || u.ArtNetUniverse == universe)
+                {
+                    foreach (var c in _config.Controllers)
+                        if (c.Id == u.ControllerId) return (c.Ip, c.Id);
+                }
+            }
+            return null;
         }
 
         /// <summary>
