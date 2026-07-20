@@ -105,8 +105,30 @@
                   <TextBlock Text="R,V,B" VerticalAlignment="Center" Foreground="#bbb"/>
                   <TextBox x:Name="SimColorBox" Text="255,255,0" Width="120"/>
                 </StackPanel>
-                <Button x:Name="SimulateUnityBtn" Content="Simuler Unity (UDP)"/>
-                <TextBlock Text="Envoie une frame eHuB de test vers ① (à droite)."
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Motif" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <ComboBox x:Name="FakerMotifBox" SelectedIndex="0" Width="150">
+                    <ComboBoxItem>Couleur unie</ComboBoxItem>
+                    <ComboBoxItem>Chenillard</ComboBoxItem>
+                    <ComboBoxItem>Arc-en-ciel</ComboBoxItem>
+                    <ComboBoxItem>Clignotement</ComboBoxItem>
+                    <ComboBoxItem>Tout blanc</ComboBoxItem>
+                  </ComboBox>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Delay ms" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="FakerDelayBox" Text="120" Width="70"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Button x:Name="SimulateUnityBtn" Content="Envoyer 1 frame"/>
+                  <Button x:Name="AnimateBtn" Content="▶ Animer"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Burst" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="FakerBurstBox" Text="10" Width="52"/>
+                  <Button x:Name="BurstBtn" Content="Envoyer N frames"/>
+                </StackPanel>
+                <TextBlock Text="1 frame = image figée. « Animer » = envoi continu (le chenillard / l'arc-en-ciel bougent)."
                            TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
               </StackPanel>
             </Border>
@@ -128,16 +150,6 @@
                   <TextBlock x:Name="RxInfo" Text="—" VerticalAlignment="Center"
                              Foreground="#888" FontSize="11"/>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                  <TextBlock Text="Paquets" VerticalAlignment="Center" Foreground="#bbb"/>
-                  <TextBlock x:Name="PacketCountText" Text="0" VerticalAlignment="Center"
-                             Foreground="#d0d0d0" FontWeight="Bold"/>
-                </StackPanel>
-                <TextBlock Text="Le filtre univers limite la liste affichée; tu peux ensuite inspecter un paquet reçu."
-                           TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
-                <Border Background="#000" Padding="4" CornerRadius="3">
-                  <ListBox x:Name="PacketListBox" Background="#000" BorderThickness="0" Foreground="#ddd"/>
-                </Border>
               </StackPanel>
             </Border>
             <TextBlock Text="→" VerticalAlignment="Center" Foreground="#666" FontSize="18"/>
@@ -203,11 +215,37 @@
                 <Border Background="#000" Padding="4" CornerRadius="3">
                   <WrapPanel x:Name="ArtNetMonitor" Width="224"/>
                 </Border>
+                <Button x:Name="SendFrameBtn" Content="Envoyer la trame"/>
                 <StackPanel Orientation="Horizontal" Spacing="6">
-                  <Button x:Name="SendFrameBtn" Content="Envoyer la trame"/>
-                  <Button x:Name="TestWhiteBtn" Content="WHITE" Width="66"/>
-                  <Button x:Name="TestBlackBtn" Content="BLACK" Width="66"/>
+                  <Button x:Name="TestWhiteBtn" Content="WHITE" Width="60"/>
+                  <Button x:Name="TestBlackBtn" Content="BLACK" Width="60"/>
+                  <Button x:Name="StreamBtn" Content="▶ Continu"/>
                 </StackPanel>
+              </StackPanel>
+            </Border>
+            <TextBlock Text="→" VerticalAlignment="Center" Foreground="#666" FontSize="18"/>
+
+            <!-- ═══ ⑤ Moniteur ArtNet (réseau) ═══ -->
+            <Border Background="#202028" BorderBrush="#3a3a44" BorderThickness="1"
+                    CornerRadius="6" Padding="8" Width="250" VerticalAlignment="Top">
+              <StackPanel Spacing="6">
+                <TextBlock Text="⑤ Moniteur ArtNet (réseau)" FontWeight="Bold" Foreground="#e0e0e0"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Port" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="ArtPortBox" Text="6454" Width="70"/>
+                  <Button x:Name="ArtListenBtn" Content="▶ Écouter"/>
+                </StackPanel>
+                <TextBlock x:Name="ArtRxInfo" Text="—" TextWrapping="Wrap"
+                           Foreground="#888" FontSize="11"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Voir univers" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="ArtViewUniverseBox" Text="0" Width="60"/>
+                </StackPanel>
+                <TextBlock Text="DMX reçu sur le réseau pour cet univers :"
+                           TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
+                <Border Background="#000" Padding="4" CornerRadius="3">
+                  <WrapPanel x:Name="ArtDmxMonitor" Width="224"/>
+                </Border>
               </StackPanel>
             </Border>
 

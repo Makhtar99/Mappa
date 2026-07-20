@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media.Imaging;
@@ -46,6 +48,19 @@ namespace Mappa.Ui
         private string? _selectedPacketKey;
         private string? _lastUniverseFilterText;
         private byte[]? _lastDmx;           // dernière trame DMX affichée (pour « Envoyer la trame »)
+        private ArtNetReceiver? _artRx;     // moniteur ArtNet réseau (⑤)
+        private readonly Dictionary<int, byte[]> _artSentMirror = new Dictionary<int, byte[]>();
+        private long _lastArtPainted = -1;
+        private bool _artListenEnabled;
+        private bool _fakerAnimating;       // faker : animation en cours
+        private int _fakerFrame;            // indice de frame d'animation
+        private int _fakerDelayMs = 120;    // cadence du faker animé / rafale
+        private long _lastFakerTickMs;      // horodatage du dernier envoi faker
+        private bool _fakerBurstRunning;    // évite les rafales concurrentes
+        private ArtNetSender? _artSender;   // émetteur ArtNet du nœud ④ (réutilisé)
+        private bool _artStreaming;         // ④ : émission en continu (hardware)
+        private bool _artStreamLoopRunning; // boucle d'émission continue en cours
+        private byte[] _artStreamFrame = FullFrame(255);
 
         public MainWindow()
         {
@@ -65,12 +80,8 @@ namespace Mappa.Ui
             EhubChk.IsCheckedChanged += (_, _) => UpdateFaker();
             ListenBtn.Click += (_, _) => ToggleListen();
             SimulateUnityBtn.Click += (_, _) => SimulateUnity();
-            PacketListBox.ItemsSource = _packetItems;
-            PacketListBox.SelectionChanged += (_, _) =>
-            {
-                _selectedPacketKey = (PacketListBox.SelectedItem as EhubReceiver.PacketSnapshot)?.Key;
-                _debugDirty = true;
-            };
+            BurstBtn.Click += async (_, _) => await SendFakerBurstAsync();
+            FakerDelayBox.TextChanged += (_, _) => UpdateFakerDelay();
             FormatBox.SelectionChanged += (_, _) => _debugDirty = true;
             FilterStartBox.TextChanged += (_, _) => _debugDirty = true;
             FilterEndBox.TextChanged += (_, _) => _debugDirty = true;
@@ -79,12 +90,22 @@ namespace Mappa.Ui
             SendFrameBtn.Click += (_, _) => SendArtNet(_lastDmx ?? FullFrame(0));
             TestWhiteBtn.Click += (_, _) => SendArtNet(FullFrame(255));
             TestBlackBtn.Click += (_, _) => SendArtNet(FullFrame(0));
+            ArtListenBtn.Click += (_, _) => ToggleArtListen();
+            AnimateBtn.Click += (_, _) => ToggleAnimate();
+            StreamBtn.Click += (_, _) => ToggleStream();
+            ArtViewUniverseBox.TextChanged += (_, _) => _lastArtPainted = -1;
 
             _uiTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
             _uiTimer.Tick += (_, _) => OnUiTick();
             _uiTimer.Start();
 
             RefreshNode4Ip(); // affiche « charge une config » au démarrage
+        }
+
+        private void UpdateFakerDelay()
+        {
+            if (int.TryParse(FakerDelayBox.Text, out int delay) && delay >= 0)
+                _fakerDelayMs = delay;
         }
 
         // ------------------------------------------------------------------ //
@@ -238,7 +259,6 @@ namespace Mappa.Ui
                 ListenBtn.Content = "■ Stop";
                 RxInfo.Text = "à l'écoute…";
                 _packetItems.Clear();
-                PacketCountText.Text = "0";
             }
             else
             {
@@ -247,7 +267,6 @@ namespace Mappa.Ui
                 ListenBtn.Content = "▶ Écouter";
                 RxInfo.Text = "arrêté";
                 _packetItems.Clear();
-                PacketCountText.Text = "0";
             }
             _debugDirty = true;
         }
@@ -256,21 +275,56 @@ namespace Mappa.Ui
         /// Simulation minimale : envoie une frame eHuB locale avec la plage et la couleur saisies.
         /// Elle sert juste à générer du trafic de test, sans modifier le monitor de réception.
         /// </summary>
-        private void SimulateUnity()
+        private void SimulateUnity() => SendFakerFrame(0);   // envoi ponctuel (image figée)
+
+        /// <summary>Envoie une petite rafale de frames eHuB pour tester les motifs animés.</summary>
+        private async Task SendFakerBurstAsync()
+        {
+            if (_fakerBurstRunning) return;
+            if (!int.TryParse(FakerBurstBox.Text, out int count) || count <= 0)
+            {
+                Status("Nombre de frames invalide pour la rafale.");
+                return;
+            }
+
+            _fakerBurstRunning = true;
+            BurstBtn.IsEnabled = false;
+            try
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    if (!SendFakerFrame(i, announce: false)) return;
+                    await Task.Delay(_fakerDelayMs);
+                }
+
+                Status($"Rafale de {count} frame(s) envoyée.");
+            }
+            finally
+            {
+                BurstBtn.IsEnabled = true;
+                _fakerBurstRunning = false;
+            }
+        }
+
+        /// <summary>
+        /// Envoie UNE frame eHuB du faker : plage + couleur + motif choisis, pour
+        /// l'indice d'animation <paramref name="frame"/> (chenillard / arc-en-ciel).
+        /// </summary>
+        private bool SendFakerFrame(int frame, bool announce = true)
         {
             if (!int.TryParse(SimStartBox.Text, out int start) ||
                 !int.TryParse(SimEndBox.Text, out int end) || end < start)
             {
                 Status("Plage invalide : Start ID doit être ≤ End ID.");
-                return;
+                _fakerAnimating = false;
+                return false;
             }
-
             if (!byte.TryParse(SimUniverseBox.Text, out byte ehubUniverse))
             {
                 Status("Univers eHuB invalide : entre 0 et 255.");
-                return;
+                _fakerAnimating = false;
+                return false;
             }
-
             var parts = (SimColorBox.Text ?? "").Split(',');
             if (parts.Length != 3 ||
                 !byte.TryParse(parts[0].Trim(), out byte r) ||
@@ -278,14 +332,16 @@ namespace Mappa.Ui
                 !byte.TryParse(parts[2].Trim(), out byte b))
             {
                 Status("Couleur invalide : format R,V,B (ex : 255,255,0).");
-                return;
+                _fakerAnimating = false;
+                return false;
             }
 
             int port = int.TryParse(SimPortBox.Text, out var p) ? p : Ehub.DefaultUdpPort;
             var ids = new List<int>();
             for (int id = start; id <= end; id++) ids.Add(id);
             var st = new State(ids);
-            foreach (int id in ids) st.Set(id, r, g, b);
+            string motif = (FakerMotifBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Couleur unie";
+            FillMotif(st, ids, motif, r, g, b, frame);
 
             try
             {
@@ -293,12 +349,77 @@ namespace Mappa.Ui
                 using var udp = new System.Net.Sockets.UdpClient();
                 udp.Send(packet, packet.Length,
                     new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, port));
-                Status("Frame eHuB simulée envoyée.");
+                if (announce && !_fakerAnimating) Status($"Frame eHuB « {motif} » envoyée.");
+                return true;
             }
             catch (Exception ex)
             {
                 Status("Envoi eHuB simulé impossible : " + ex.Message);
+                _fakerAnimating = false;
+                return false;
             }
+        }
+
+        /// <summary>Remplit le State selon le motif (pour l'animation <paramref name="frame"/>).</summary>
+        private static void FillMotif(State st, IReadOnlyList<int> ids, string motif,
+                                      byte r, byte g, byte b, int frame)
+        {
+            int n = ids.Count;
+            if (n == 0) return;
+            st.Clear();
+            switch (motif)
+            {
+                case "Chenillard":
+                    st.Set(ids[frame % n], r, g, b);            // 1 LED allumée, qui se déplace
+                    break;
+                case "Arc-en-ciel":
+                    for (int i = 0; i < n; i++)
+                    {
+                        HsvToRgb(((double)i / n + frame * 0.02) % 1.0,
+                                 out byte rr, out byte gg, out byte bb);
+                        st.Set(ids[i], rr, gg, bb);
+                    }
+                    break;
+                case "Tout blanc":
+                    foreach (int id in ids) st.Set(id, 255, 255, 255);
+                    break;
+                case "Clignotement":
+                    if ((frame / 10) % 2 == 0)
+                        foreach (int id in ids) st.Set(id, r, g, b);
+                    break;
+                default:                                        // Couleur unie
+                    foreach (int id in ids) st.Set(id, r, g, b);
+                    break;
+            }
+        }
+
+        /// <summary>Bascule l'animation du faker (une frame envoyée à chaque tick).</summary>
+        private void ToggleAnimate()
+        {
+            _fakerAnimating = !_fakerAnimating;
+            _fakerFrame = 0;
+            _lastFakerTickMs = 0;
+            AnimateBtn.Content = _fakerAnimating ? "■ Stop" : "▶ Animer";
+            Status(_fakerAnimating ? "Animation du faker en cours…" : "Animation arrêtée.");
+        }
+
+        /// <summary>Teinte HSV (S=V=1) → RVB, pour le motif arc-en-ciel.</summary>
+        private static void HsvToRgb(double h, out byte r, out byte g, out byte b)
+        {
+            double hh = (h % 1.0) * 6.0;
+            int i = (int)Math.Floor(hh);
+            double f = hh - i, q = 1 - f, t = f;
+            double rd, gd, bd;
+            switch (((i % 6) + 6) % 6)
+            {
+                case 0: rd = 1; gd = t; bd = 0; break;
+                case 1: rd = q; gd = 1; bd = 0; break;
+                case 2: rd = 0; gd = 1; bd = t; break;
+                case 3: rd = 0; gd = q; bd = 1; break;
+                case 4: rd = t; gd = 0; bd = 1; break;
+                default: rd = 1; gd = 0; bd = q; break;
+            }
+            r = (byte)(rd * 255); g = (byte)(gd * 255); b = (byte)(bd * 255);
         }
 
         /// <summary>
@@ -317,7 +438,6 @@ namespace Mappa.Ui
             {
                 _packetItems.Clear();
                 _selectedPacketKey = null;
-                PacketCountText.Text = "0";
                 LedMonitor.Children.Clear();
                 DmxMonitor.Children.Clear();
                 ArtNetMonitor.Children.Clear();
@@ -336,7 +456,6 @@ namespace Mappa.Ui
             }
 
             SyncPacketList(visiblePackets, universeFilterText);
-            PacketCountText.Text = visiblePackets.Count.ToString();
 
             var selectedPacket = GetSelectedPacket(visiblePackets) ?? GetLastPacket(visiblePackets);
             if (selectedPacket == null)
@@ -348,8 +467,6 @@ namespace Mappa.Ui
                 return;
             }
 
-            if (!ReferenceEquals(PacketListBox.SelectedItem, selectedPacket))
-                PacketListBox.SelectedItem = selectedPacket;
 
             if (!int.TryParse(FilterStartBox.Text, out int start) ||
                 !int.TryParse(FilterEndBox.Text, out int end) || end < start)
@@ -371,17 +488,6 @@ namespace Mappa.Ui
                 for (int i = 0; i < packets.Count; i++)
                 {
                     _packetItems.Add(packets[i]);
-                }
-
-                if (selectedKey == null) return;
-
-                for (int i = 0; i < _packetItems.Count; i++)
-                {
-                    if (_packetItems[i].Key == selectedKey)
-                    {
-                        PacketListBox.SelectedIndex = i;
-                        return;
-                    }
                 }
 
                 _selectedPacketKey = null;
@@ -458,25 +564,101 @@ namespace Mappa.Ui
         /// </summary>
         private void SendArtNet(byte[] dmx)
         {
-            string ip = TestIpBox.Text?.Trim() ?? "";
+            _artStreamFrame = dmx;   // trame que le mode « Continu » répétera
+            if (SendOnce(dmx, out string ip, out int universe))
+            {
+                MirrorArtNet(universe, dmx);
+                Status(_artStreaming
+                    ? $"Émission continue vers {ip}, univers {universe}."
+                    : $"ArtNet envoyé à {ip}, univers {universe}.");
+            }
+        }
+
+        /// <summary>Envoie UNE trame ArtNet vers l'IP/univers du nœud ④ (émetteur réutilisé).</summary>
+        private bool SendOnce(byte[] dmx, out string ip, out int universe)
+        {
+            ip = TestIpBox.Text?.Trim() ?? "";
+            universe = int.TryParse(TestUniverseBox.Text, out var u) ? u : 0;
             if (string.IsNullOrEmpty(ip))
             {
                 Status("Renseigne une IP dans le nœud ④ avant d'envoyer.");
-                return;
+                _artStreaming = false;
+                return false;
             }
-            int universe = int.TryParse(TestUniverseBox.Text, out var u) ? u : 0;
             try
             {
-                using var sender = new ArtNetSender();
-                // 3 trames d'affilée : certains contrôleurs ignorent un paquet isolé.
-                for (int i = 0; i < 3; i++) sender.Send(ip, universe, dmx);
-                Status($"ArtNet envoyé à {ip}, univers {universe}.");
+                _artSender ??= new ArtNetSender();
+                _artSender.Send(ip, universe, dmx);
+                if (_artListenEnabled)
+                    MirrorArtNet(universe, dmx);
+                return true;
             }
             catch (Exception ex)
             {
                 Status("Envoi ArtNet impossible : " + ex.Message);
+                _artStreaming = false;
+                return false;
             }
         }
+
+        /// <summary>
+        /// Mémorise localement la dernière trame ArtNet envoyée pour permettre au
+        /// moniteur ⑤ d'afficher quelque chose même si aucun paquet ne revient du réseau.
+        /// </summary>
+        private void MirrorArtNet(int universe, byte[] dmx)
+        {
+            var copy = new byte[dmx.Length];
+            Buffer.BlockCopy(dmx, 0, copy, 0, dmx.Length);
+            lock (_artSentMirror)
+            {
+                _artSentMirror[universe] = copy;
+            }
+        }
+
+        /// <summary>
+        /// Bascule l'émission ArtNet EN CONTINU. Nécessaire pour le vrai matériel :
+        /// les contrôleurs oublient un paquet isolé, ils ont besoin d'un flux.
+        /// </summary>
+        private void ToggleStream()
+        {
+            _artStreaming = !_artStreaming;
+            StreamBtn.Content = _artStreaming ? "■ Stop" : "▶ Continu";
+            if (_artStreaming)
+            {
+                _ = RunArtStreamLoopAsync();
+            }
+            Status(_artStreaming
+                ? "Émission ArtNet EN CONTINU — les LEDs restent allumées."
+                : "Émission continue arrêtée.");
+        }
+
+        /// <summary>
+        /// Boucle d'émission ArtNet dédiée au mode continu. Elle n'utilise pas le
+        /// timer UI, donc le flux reste actif même si l'interface ralentit.
+        /// </summary>
+        private async Task RunArtStreamLoopAsync()
+        {
+            if (_artStreamLoopRunning) return;
+            _artStreamLoopRunning = true;
+            try
+            {
+                while (_artStreaming)
+                {
+                    SendOnce(GetLiveStreamFrame(), out _, out _);
+                    await Task.Delay(33);
+                }
+            }
+            finally
+            {
+                _artStreamLoopRunning = false;
+            }
+        }
+
+        /// <summary>
+        /// Retourne la trame la plus récente à émettre en continu : la dernière
+        /// trame DMX affichée si elle existe, sinon la trame mémorisée par le bouton.
+        /// </summary>
+        private byte[] GetLiveStreamFrame() => _lastDmx ?? _artStreamFrame;
 
         /// <summary>
         /// Canaux DMX d'une LED selon son type (nœud ③) : certaines LED n'ont
@@ -538,14 +720,17 @@ namespace Mappa.Ui
         /// canaux de la trame DMX qui part (ou partirait) en ArtNet.
         /// 1 carré = 1 canal, niveau de gris = intensité (0 éteint → 255 blanc).
         /// </summary>
-        private void PaintArtNetMonitor(byte[] dmx, int count)
+        private void PaintArtNetMonitor(byte[] dmx, int count) => PaintDmxGrid(ArtNetMonitor, dmx, count);
+
+        /// <summary>Dessine une grille de canaux DMX (1 carré = 1 canal, gris = intensité) dans un panneau.</summary>
+        private static void PaintDmxGrid(WrapPanel target, byte[] dmx, int count)
         {
-            ArtNetMonitor.Children.Clear();
+            target.Children.Clear();
             count = Math.Min(count, dmx.Length);
             for (int i = 0; i < count; i++)
             {
                 byte v = dmx[i];
-                ArtNetMonitor.Children.Add(new Border
+                target.Children.Add(new Border
                 {
                     Width = 12,
                     Height = 12,
@@ -556,6 +741,76 @@ namespace Mappa.Ui
                     BorderThickness = GridLine,
                 });
             }
+        }
+
+        /// <summary>
+        /// Moniteur ArtNet réseau (P8) : démarre/arrête l'écoute du port ArtNet.
+        /// Écoute ce qui circule VRAIMENT sur le réseau (la sortie du routage).
+        /// </summary>
+        private void ToggleArtListen()
+        {
+            if (_artRx == null)
+            {
+                int port = int.TryParse(ArtPortBox.Text, out var p) ? p : 6454;
+                try { _artRx = new ArtNetReceiver(port); }
+                catch (Exception ex) { Status("Écoute ArtNet impossible : " + ex.Message); return; }
+                _artListenEnabled = true;
+                ArtListenBtn.Content = "■ Stop";
+                ArtRxInfo.Text = $"à l'écoute sur {port}…";
+            }
+            else
+            {
+                _artListenEnabled = false;
+                _artRx.Dispose();
+                _artRx = null;
+                ArtListenBtn.Content = "▶ Écouter";
+                ArtRxInfo.Text = "arrêté";
+                ArtDmxMonitor.Children.Clear();
+                lock (_artSentMirror)
+                {
+                    _artSentMirror.Clear();
+                }
+            }
+            _lastArtPainted = -1;
+        }
+
+        /// <summary>Rafraîchit le moniteur ArtNet : liste des univers reçus + DMX de l'univers demandé.</summary>
+        private void UpdateArtMonitor()
+        {
+            int want = int.TryParse(ArtViewUniverseBox.Text, out var v) ? v : 0;
+
+            if (_artRx != null)
+            {
+                long rx = _artRx.PacketsReceived;
+                var universes = _artRx.Snapshot();
+                if (rx != _lastArtPainted)
+                {
+                    _lastArtPainted = rx;
+                    ArtRxInfo.Text = universes.Count == 0
+                        ? $"reçu : 0 paquet (rien sur le réseau)"
+                        : $"reçu : {rx} paquets — univers : {string.Join(", ", universes.Select(u => u.Universe))}";
+
+                    ArtNetReceiver.UniverseSnapshot? shown = null;
+                    foreach (var u in universes) if (u.Universe == want) { shown = u; break; }
+                    if (shown != null)
+                    {
+                        PaintDmxGrid(ArtDmxMonitor, shown.Dmx, 96);
+                        return;
+                    }
+                }
+            }
+
+            lock (_artSentMirror)
+            {
+                if (_artSentMirror.TryGetValue(want, out var mirror))
+                {
+                    ArtRxInfo.Text = "miroir local : dernière trame envoyée par le nœud ④";
+                    PaintDmxGrid(ArtDmxMonitor, mirror, Math.Min(96, mirror.Length));
+                    return;
+                }
+            }
+
+            ArtDmxMonitor.Children.Clear();
         }
 
         /// <summary>Une case LED (16x16) de la couleur donnée, avec contour de grille.</summary>
@@ -586,7 +841,17 @@ namespace Mappa.Ui
         // ------------------------------------------------------------------ //
         private void OnUiTick()
         {
+            if (_fakerAnimating)
+            {
+                long nowMs = Environment.TickCount64;
+                if (_lastFakerTickMs == 0 || nowMs - _lastFakerTickMs >= _fakerDelayMs)
+                {
+                    _lastFakerTickMs = nowMs;
+                    SendFakerFrame(_fakerFrame++); // faker animé
+                }
+            }
             UpdateDebugMonitors(); // onglet Débogage : marche même sans config chargée
+            UpdateArtMonitor();    // moniteur ArtNet réseau (⑤)
 
             if (_engine == null) return;
 
@@ -681,6 +946,8 @@ namespace Mappa.Ui
             _engine?.Dispose();
             _ehubFaker?.Dispose();
             _debugRx?.Dispose();
+            _artRx?.Dispose();
+            _artSender?.Dispose();
             base.OnClosed(e);
         }
     }
