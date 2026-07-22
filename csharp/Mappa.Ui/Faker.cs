@@ -21,6 +21,18 @@ namespace Mappa.Ui
     public sealed class RainbowFaker : IFaker
     {
         private double _t;
+        private volatile float _brightness = 1f;
+
+        /// <summary>
+        /// Luminosite des couleurs, 0 (noir) a 1 (sature). C'est la composante V
+        /// du HSV : la teinte et la saturation sont preservees, seule l'intensite
+        /// baisse. Reglable pendant que la boucle de routage tourne.
+        /// </summary>
+        public float Brightness
+        {
+            get => _brightness;
+            set => _brightness = value < 0f ? 0f : value > 1f ? 1f : value;
+        }
 
         public void Fill(State state)
         {
@@ -29,10 +41,11 @@ namespace Mappa.Ui
             int n = ids.Count;
             if (n == 0) return;
 
+            double v = _brightness;
             for (int i = 0; i < n; i++)
             {
                 double hue = (i / (double)n + _t) % 1.0;
-                HsvToRgb(hue, 1.0, 1.0, out byte r, out byte g, out byte b);
+                HsvToRgb(hue, 1.0, v, out byte r, out byte g, out byte b);
                 state.Set(ids[i], r, g, b);
             }
             state.MarkUpdated();

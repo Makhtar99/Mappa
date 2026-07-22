@@ -10,3 +10,23 @@ configs/wall_dual_after_failover.json
 
 # Doublon de casse genere depuis l'Excel (la version suivie est configs/ecran.json)
 configs/Ecran.json
+
+# Unity (genere) — a la racine du repo uniquement, ne touche pas csharp/
+/[Ll]ibrary/
+/[Tt]emp/
+/[Ll]ogs/
+/[Uu]serSettings/
+/[Mm]emoryCaptures/
+/[Bb]uild/
+/[Bb]uilds/
+/.vs/
+/Assembly-*.csproj
+/*.sln
+/*.csproj
+/sysinfo.txt
+*.pidb.meta
+*.pdb.meta
+
+# VP9 source video (unreadable by Unity; mp4 transcode is used)
+/assets/my-system-light-show.webm
+/assets/my-system-light-show.webm.meta
