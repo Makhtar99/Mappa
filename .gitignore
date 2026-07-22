@@ -30,3 +30,6 @@ configs/Ecran.json
 # VP9 source video (unreadable by Unity; mp4 transcode is used)
 /assets/my-system-light-show.webm
 /assets/my-system-light-show.webm.meta
+
+# Binaires publiés (98 Mo, régénérables via dotnet publish)
+dist/

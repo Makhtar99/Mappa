@@ -51,6 +51,14 @@ namespace Mappa.Ui
         private string _targets = "—";
         private readonly DispatcherTimer _uiTimer;
 
+        // Récepteur eHuB PARTAGÉ entre le nœud ① (débogage) et la case « Recevoir
+        // eHuB » du visualiseur. Un seul socket peut écouter un port UDP donné :
+        // en ouvrir deux faisait échouer le second en silence côté utilisateur.
+        // Compteur d'usages : on ferme le socket quand plus personne ne s'en sert.
+        private EhubReceiver? _sharedRx;
+        private int _sharedRxPort;
+        private int _sharedRxUsers;
+
         // Débogage : récepteur eHuB du nœud ①. Les moniteurs affichent ce qu'il
         // reçoit (rien tant qu'aucun eHuB n'arrive).
         private EhubReceiver? _debugRx;
@@ -258,8 +266,8 @@ namespace Mappa.Ui
 
             if (!(EhubChk.IsChecked ?? false) && _ehubFaker != null)
             {
-                _ehubFaker.Dispose();
                 _ehubFaker = null;
+                ReleaseReceiver();
             }
 
             if (EhubChk.IsChecked ?? false)
@@ -269,7 +277,8 @@ namespace Mappa.Ui
                     int port = int.TryParse(EhubPortBox.Text, out var p) ? p : Ehub.DefaultUdpPort;
                     try
                     {
-                        _ehubFaker = new EhubFaker(port);
+                        // Récepteur partagé : le nœud ① écoute peut-être déjà ce port.
+                        _ehubFaker = new EhubFaker(AcquireReceiver(port));
                     }
                     catch (Exception ex)
                     {
@@ -293,6 +302,37 @@ namespace Mappa.Ui
         }
 
         /// <summary>
+        /// Ouvre (ou réutilise) LE récepteur eHuB de l'application. Un port UDP ne
+        /// peut être écouté que par un seul socket : si le visualiseur et le nœud ①
+        /// demandent le même port, ils partagent le même récepteur. Lève une
+        /// exception si on demande un AUTRE port pendant qu'un usage est en cours.
+        /// </summary>
+        private EhubReceiver AcquireReceiver(int port)
+        {
+            if (_sharedRx != null && _sharedRxUsers > 0 && _sharedRxPort != port)
+            {
+                throw new InvalidOperationException(
+                    $"le port {_sharedRxPort} est déjà écouté ; utilise le même port des deux côtés");
+            }
+            if (_sharedRx == null)
+            {
+                _sharedRx = new EhubReceiver(port);
+                _sharedRxPort = port;
+            }
+            _sharedRxUsers++;
+            return _sharedRx;
+        }
+
+        /// <summary>Rend un usage du récepteur partagé ; ferme le socket au dernier.</summary>
+        private void ReleaseReceiver()
+        {
+            if (_sharedRxUsers > 0) _sharedRxUsers--;
+            if (_sharedRxUsers != 0) return;
+            _sharedRx?.Dispose();
+            _sharedRx = null;
+        }
+
+        /// <summary>
         /// Nœud ① : démarre/arrête l'écoute eHuB sur le port saisi. Tant qu'on
         /// n'écoute pas (ou que rien n'arrive), les moniteurs restent vides.
         /// </summary>
@@ -301,15 +341,17 @@ namespace Mappa.Ui
             if (_debugRx == null)
             {
                 int port = int.TryParse(InPortBox.Text, out var p) ? p : Ehub.DefaultUdpPort;
-                try { _debugRx = new EhubReceiver(port); }
+                try { _debugRx = AcquireReceiver(port); }
                 catch (Exception ex) { Status("Écoute eHuB impossible : " + ex.Message); return; }
                 ListenBtn.Content = "■ Stop";
-                RxInfo.Text = "à l'écoute…";
+                RxInfo.Text = _sharedRxUsers > 1
+                    ? $"à l'écoute sur {port} (partagé avec le visualiseur)…"
+                    : $"à l'écoute sur {port}…";
             }
             else
             {
-                _debugRx.Dispose();
                 _debugRx = null;
+                ReleaseReceiver();
                 ListenBtn.Content = "▶ Écouter";
                 RxInfo.Text = "arrêté";
             }
@@ -1180,8 +1222,7 @@ namespace Mappa.Ui
             _fakerAnimating = false;   // arrête la boucle du faker
             _artStreaming = false;     // arrête l'émission ArtNet continue
             _engine?.Dispose();
-            _ehubFaker?.Dispose();
-            _debugRx?.Dispose();
+            _sharedRx?.Dispose();       // récepteur eHuB partagé (nœud ① + visualiseur)
             _artSender?.Dispose();
             _simUdp?.Dispose();
             base.OnClosed(e);
