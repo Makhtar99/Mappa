@@ -701,6 +701,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2000001002}
   - component: {fileID: 2000001003}
+  - component: {fileID: 2000001004}
   m_Layer: 0
   m_Name: Projector
   m_TagString: Untagged
@@ -717,7 +718,7 @@ Transform:
   m_GameObject: {fileID: 2000001001}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 0, y: -1.15, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -741,6 +742,26 @@ MonoBehaviour:
   color: {r: 1, g: 1, b: 1, a: 1}
   white: 0
   dimmer: 1
+--- !u!114 &2000001004
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2000001001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 57f61a973b430f4428c2131e5e14b799, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ProjectorVisual
+  length: 2
+  radius: 0.35
+  opacity: 0.7
+  segments: 20
+  direction: {x: 0, y: 1, z: 0}
+  followLyreOrientation: 1
+  panSwingDeg: 45
+  tiltSwingDeg: 45
 --- !u!1 &2000002001
 GameObject:
   m_ObjectHideFlags: 0
@@ -752,6 +773,7 @@ GameObject:
   - component: {fileID: 2000002002}
   - component: {fileID: 2000002003}
   - component: {fileID: 2000002004}
+  - component: {fileID: 2000002005}
   m_Layer: 0
   m_Name: Lyre 1
   m_TagString: Untagged
@@ -768,7 +790,7 @@ Transform:
   m_GameObject: {fileID: 2000002001}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: -1.0, y: -1.15, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -813,6 +835,26 @@ MonoBehaviour:
   centerPan: 0.5
   centerTilt: 0.5
   phase: 0
+--- !u!114 &2000002005
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2000002001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 57f61a973b430f4428c2131e5e14b799, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ProjectorVisual
+  length: 2.5
+  radius: 0.3
+  opacity: 0.7
+  segments: 20
+  direction: {x: 0, y: 1, z: 0}
+  followLyreOrientation: 1
+  panSwingDeg: 55
+  tiltSwingDeg: 55
 --- !u!1 &2000003001
 GameObject:
   m_ObjectHideFlags: 0
@@ -824,6 +866,7 @@ GameObject:
   - component: {fileID: 2000003002}
   - component: {fileID: 2000003003}
   - component: {fileID: 2000003004}
+  - component: {fileID: 2000003005}
   m_Layer: 0
   m_Name: Lyre 2
   m_TagString: Untagged
@@ -840,7 +883,7 @@ Transform:
   m_GameObject: {fileID: 2000003001}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: -0.4, y: -1.15, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -885,6 +928,26 @@ MonoBehaviour:
   centerPan: 0.5
   centerTilt: 0.5
   phase: 0
+--- !u!114 &2000003005
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2000003001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 57f61a973b430f4428c2131e5e14b799, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ProjectorVisual
+  length: 2.5
+  radius: 0.3
+  opacity: 0.7
+  segments: 20
+  direction: {x: 0, y: 1, z: 0}
+  followLyreOrientation: 1
+  panSwingDeg: 55
+  tiltSwingDeg: 55
 --- !u!1 &2000004001
 GameObject:
   m_ObjectHideFlags: 0
@@ -896,6 +959,7 @@ GameObject:
   - component: {fileID: 2000004002}
   - component: {fileID: 2000004003}
   - component: {fileID: 2000004004}
+  - component: {fileID: 2000004005}
   m_Layer: 0
   m_Name: Lyre 3
   m_TagString: Untagged
@@ -912,7 +976,7 @@ Transform:
   m_GameObject: {fileID: 2000004001}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 0.4, y: -1.15, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -957,6 +1021,26 @@ MonoBehaviour:
   centerPan: 0.5
   centerTilt: 0.5
   phase: 0
+--- !u!114 &2000004005
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2000004001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 57f61a973b430f4428c2131e5e14b799, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ProjectorVisual
+  length: 2.5
+  radius: 0.3
+  opacity: 0.7
+  segments: 20
+  direction: {x: 0, y: 1, z: 0}
+  followLyreOrientation: 1
+  panSwingDeg: 55
+  tiltSwingDeg: 55
 --- !u!1 &2000005001
 GameObject:
   m_ObjectHideFlags: 0
@@ -968,6 +1052,7 @@ GameObject:
   - component: {fileID: 2000005002}
   - component: {fileID: 2000005003}
   - component: {fileID: 2000005004}
+  - component: {fileID: 2000005005}
   m_Layer: 0
   m_Name: Lyre 4
   m_TagString: Untagged
@@ -984,7 +1069,7 @@ Transform:
   m_GameObject: {fileID: 2000005001}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 1.0, y: -1.15, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1029,6 +1114,85 @@ MonoBehaviour:
   centerPan: 0.5
   centerTilt: 0.5
   phase: 0
+--- !u!114 &2000005005
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2000005001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 57f61a973b430f4428c2131e5e14b799, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ProjectorVisual
+  length: 2.5
+  radius: 0.3
+  opacity: 0.7
+  segments: 20
+  direction: {x: 0, y: 1, z: 0}
+  followLyreOrientation: 1
+  panSwingDeg: 55
+  tiltSwingDeg: 55
+--- !u!1 &2000006001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2000006002}
+  - component: {fileID: 2000006003}
+  m_Layer: 0
+  m_Name: Timeline Projecteurs
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2000006002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2000006001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2000006003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2000006001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 98fd32a2bf75432282aab665a7d8e1d7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ProjectorTimeline
+  lyres:
+  - {fileID: 2000002003}
+  - {fileID: 2000003003}
+  - {fileID: 2000004003}
+  - {fileID: 2000005003}
+  projector: {fileID: 2000001003}
+  duration: 30
+  loop: 1
+  playOnStart: 1
+  sweepCycles: 3
+  panAmplitude: 0.35
+  tiltAmplitude: 0.35
+  tiltCenter: 0.5
+  colorPeriod: 4
+  alternateByLyre: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -1043,3 +1207,4 @@ SceneRoots:
   - {fileID: 2000003002}
   - {fileID: 2000004002}
   - {fileID: 2000005002}
+  - {fileID: 2000006002}
