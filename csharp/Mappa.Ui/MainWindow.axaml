@@ -173,11 +173,13 @@
                   <TextBlock Text="Univers" VerticalAlignment="Center" Foreground="#bbb"/>
                   <TextBox x:Name="UniverseFilterBox" Watermark="tous" Width="56"/>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                  <Button x:Name="ListenBtn" Content="▶ Écouter"/>
-                  <TextBlock x:Name="RxInfo" Text="—" VerticalAlignment="Center"
-                             Foreground="#888" FontSize="11"/>
-                </StackPanel>
+                <Button x:Name="ListenBtn" Content="▶ Écouter"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                <!-- Sur sa propre ligne et avec retour a la ligne : ce texte est
+                     multiligne (compteurs, univers recus, plage d'IDs) et debordait
+                     de la carte quand il etait pose a cote du bouton. -->
+                <TextBlock x:Name="RxInfo" Text="—" TextWrapping="Wrap"
+                           Foreground="#888" FontSize="11"/>
               </StackPanel>
             </Border>
             <TextBlock Text="→" VerticalAlignment="Center" Foreground="#666" FontSize="18"/>
@@ -193,8 +195,14 @@
                   <TextBlock Text="End" VerticalAlignment="Center" Foreground="#bbb"/>
                   <TextBox x:Name="FilterEndBox" Text="10" Width="48"/>
                 </StackPanel>
-                <TextBlock Text="Start/End = plage d'IDs de l'univers sélectionné à inspecter."
-                           Foreground="#888" FontSize="11"/>
+                <TextBlock Text="Start/End = plage d'IDs d'entités à inspecter."
+                           TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
+                <!-- Un flux Unity tourne a ~40 Hz et alterne des paquets couvrant des
+                     plages differentes : afficher le dernier paquet fait clignoter le
+                     moniteur. Le mode cumule reconstitue l'etat courant, comme le
+                     routage. Decoche pour inspecter un paquet isole. -->
+                <CheckBox x:Name="AccumulateChk" Content="Cumuler les paquets" IsChecked="True"
+                          ToolTip.Tip="Affiche l'état courant de ces entités plutôt que le seul dernier paquet reçu."/>
                 <Border Background="#000" Padding="4" CornerRadius="3">
                   <WrapPanel x:Name="LedMonitor"/>
                 </Border>

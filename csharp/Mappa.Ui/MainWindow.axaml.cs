@@ -120,6 +120,7 @@ namespace Mappa.Ui
             FilterStartBox.TextChanged += (_, _) => _debugDirty = true;
             FilterEndBox.TextChanged += (_, _) => _debugDirty = true;
             UniverseFilterBox.TextChanged += (_, _) => _debugDirty = true;
+            AccumulateChk.IsCheckedChanged += (_, _) => _debugDirty = true;
             TestUniverseBox.TextChanged += (_, _) => RefreshNode4Ip();
             SendFrameBtn.Click += (_, _) => SendArtNet(_lastDmx ?? FullFrame(0));
             TestWhiteBtn.Click += (_, _) => SendArtNet(FullFrame(255));
@@ -555,10 +556,64 @@ namespace Mappa.Ui
                 return;
             }
 
-            PaintPipeline(selectedPacket.ToState(), start, end);
+            // Mode cumulé (défaut) : l'état courant de la plage, reconstitué à partir
+            // de TOUS les paquets reçus — c'est ce que fait le routage, et c'est stable
+            // à l'écran. Sinon : le seul dernier paquet, qui clignote dès que la source
+            // alterne des plages différentes.
+            PaintPipeline(BuildMonitorState(selectedPacket, start, end), start, end);
             ShowUniversesFedBy(selectedPacket);
+
+            // La plage d'IDs du paquet est indispensable pour régler ② : sans elle,
+            // on inspecte des entités absentes du paquet et tout reste noir, sans
+            // qu'aucun message ne dise pourquoi.
+            string ids = EntitySpan(selectedPacket, out bool overlaps, start, end);
+            // En mode cumulé, un paquet hors plage est normal (la source alterne) :
+            // l'avertissement n'a de sens que si l'on n'affiche QUE ce paquet.
+            bool warn = !overlaps && !(AccumulateChk.IsChecked ?? true);
             RxInfo.Text = $"reçu : {rx} paquet(s) · {selectedPacket.RemoteEndPoint.Address} · "
-                        + $"univers affiché {selectedPacket.Universe} (reçus : {UniversesSeen(received)})";
+                        + $"univers affiché {selectedPacket.Universe} (reçus : {UniversesSeen(received)})\n"
+                        + $"entités du dernier paquet : {ids}"
+                        + (warn ? $"  ⚠ hors de la plage ② ({start}–{end}) : règle-la sur ces IDs" : "");
+        }
+
+        /// <summary>
+        /// L'état à peindre en ② : soit l'état COURANT de la plage, reconstitué à
+        /// partir de tous les paquets reçus (le récepteur mémorise la dernière
+        /// couleur connue de chaque entité, comme le routage), soit le contenu du
+        /// seul dernier paquet quand on veut inspecter un paquet isolé.
+        /// </summary>
+        private State BuildMonitorState(EhubReceiver.PacketSnapshot packet, int start, int end)
+        {
+            if (!(AccumulateChk.IsChecked ?? true) || _debugRx == null) return packet.ToState();
+
+            int count = Math.Min(end - start + 1, MaxMonitoredLeds);
+            var ids = new List<int>(Math.Max(0, count));
+            for (int i = 0; i < count; i++) ids.Add(start + i);
+
+            var state = new State(ids);
+            _debugRx.Fill(state);   // les IDs hors plage sont ignorés par State.Set
+            return state;
+        }
+
+        /// <summary>
+        /// Plage d'IDs d'entités portée par un paquet, et si elle recoupe la plage
+        /// inspectée en ②. Sans recoupement, les moniteurs sont légitimement noirs.
+        /// </summary>
+        private static string EntitySpan(EhubReceiver.PacketSnapshot packet, out bool overlaps,
+                                         int start, int end)
+        {
+            overlaps = false;
+            var list = packet.EntityIds;
+            if (list.Length == 0) return "aucune";
+
+            int min = int.MaxValue, max = int.MinValue;
+            foreach (int id in list)
+            {
+                if (id < min) min = id;
+                if (id > max) max = id;
+                if (id >= start && id <= end) overlaps = true;
+            }
+            return $"{min}–{max} ({list.Length})";
         }
 
         /// <summary>Liste triée des univers eHuB présents dans les paquets reçus.</summary>
