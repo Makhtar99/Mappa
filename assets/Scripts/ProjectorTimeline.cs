@@ -132,29 +132,50 @@ public sealed class ProjectorTimeline : MonoBehaviour
             float pan  = 0.5f + sign * sweep * panAmplitude;
             float tilt = tiltCenter + sign * sweep * tiltAmplitude; // lie au pan -> diagonale
 
-            // Couleur : soit alternee par lyre (paires rouges / impaires
-            // blanches), soit alternee dans le temps. Toujours rouge OU blanc.
-            Color col = alternateByLyre
-                ? ((i % 2 == 0) ? Red : White)
-                : Color.Lerp(Red, White, timeMix);
+            // Cette lyre est-elle "blanche" ou "rouge" ?
+            //   alternateByLyre : paires = rouge, impaires = blanc.
+            //   sinon           : tout le monde suit le temps (timeMix).
+            bool isWhite = alternateByLyre ? (i % 2 != 0) : (timeMix >= 0.5f);
 
             lyre.pan = Mathf.Clamp01(pan);
             lyre.tilt = Mathf.Clamp01(tilt);
-            lyre.color = col;
             lyre.dimmer = dim;
-            lyre.white = 0f;   // pas de canal W : le blanc vient du RGB (R=V=B=1)
             lyre.speed = 0f;   // pas de rotation motorisee
             lyre.strobe = 0f;
-            lyre.macro = 0f;   // pas de macro couleur (evite les teintes RGB parasites)
+            lyre.macro = 0f;   // pas de macro couleur (evite les cycles RGB parasites)
+
+            if (isWhite)
+            {
+                // BLANC via le canal W dedie (les lyres RGBW ne font pas un
+                // vrai blanc en additionnant R+V+B : ca donne un cycle/melange
+                // sale). On coupe R,V,B et on ouvre le canal blanc.
+                lyre.color = Color.black;   // R=V=B=0
+                lyre.white = 1f;            // canal W plein
+            }
+            else
+            {
+                // ROUGE pur via le canal R.
+                lyre.color = Red;           // R=1, V=0, B=0
+                lyre.white = 0f;
+            }
         }
 
         // --- Projecteur statique : rouge/blanc dans le temps ------------ //
         if (projector != null)
         {
             projector.isOn = true;
-            projector.color = Color.Lerp(Red, White, timeMix);
             projector.dimmer = dim;
-            projector.white = 0f;
+            if (timeMix >= 0.5f)
+            {
+                // Blanc via le canal W dedie du projecteur (canal 4).
+                projector.color = Color.black;
+                projector.white = 1f;
+            }
+            else
+            {
+                projector.color = Red;
+                projector.white = 0f;
+            }
         }
     }
 
