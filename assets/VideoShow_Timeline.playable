@@ -109,7 +109,7 @@ MonoBehaviour:
   m_Name: SceneClip
   m_EditorClassIdentifier: Assembly-CSharp::SceneClip
   template:
-    scene: 1
+    scene: 6
 --- !u!114 &-1993284840122599239
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -560,7 +560,7 @@ MonoBehaviour:
   m_Name: SceneClip
   m_EditorClassIdentifier: Assembly-CSharp::SceneClip
   template:
-    scene: 8
+    scene: 9
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -596,7 +596,7 @@ MonoBehaviour:
   m_Name: SceneClip
   m_EditorClassIdentifier: Assembly-CSharp::SceneClip
   template:
-    scene: 3
+    scene: 6
 --- !u!114 &2837846920243668574
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -624,7 +624,7 @@ MonoBehaviour:
   m_Name: SceneClip
   m_EditorClassIdentifier: Assembly-CSharp::SceneClip
   template:
-    scene: 0
+    scene: 7
 --- !u!114 &7367699333700097748
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -655,4 +655,4 @@ MonoBehaviour:
   m_Name: SceneClip
   m_EditorClassIdentifier: Assembly-CSharp::SceneClip
   template:
-    scene: 12
+    scene: 13
