@@ -155,10 +155,10 @@ namespace Mappa.Tests
             // 3) Recepteur eHuB : simule Mappa.Ui.
             using var rx = new EhubReceiver(0);
 
-            // 4) Envoie du paquet "Unity" (mapping officiel ecran.json) :
+            // 4) Envoie du paquet "Unity" (mapping ecran.json inverse lyres) :
             //    - entite 1  = Projecteur R       -> canal DMX 1  (offset 0)
-            //    - entite 10 = Lyre 1 canal 1     -> canal DMX 10 (offset 9)  pan_hi
-            //    - entite 15 = Lyre 1 canal 6     -> canal DMX 15 (offset 14) dimmer
+            //    - entite 10 = Lyre 1 (gauche) c1 -> canal DMX 70 (offset 69) pan_hi
+            //    - entite 15 = Lyre 1 (gauche) c6 -> canal DMX 75 (offset 74) dimmer
             var data = new Dictionary<int, (byte, byte, byte, byte)>
             {
                 { 10, (200, 0, 0, 0) },
@@ -208,11 +208,11 @@ namespace Mappa.Tests
             // Le paquet Art-Net a un header de 18 octets. Le DMX commence a l'offset 18.
             // canal DMX N (1-indexe) -> univ33[18 + (N-1)] = univ33[17 + N].
             //   Projo R -> canal DMX 1  -> univ33[18]
-            //   L1 c1   -> canal DMX 10 -> univ33[27]  (pan_hi)
-            //   L1 c6   -> canal DMX 15 -> univ33[32]  (dimmer)
+            //   L1 c1   -> canal DMX 70 -> univ33[87]  (pan_hi)
+            //   L1 c6   -> canal DMX 75 -> univ33[92]  (dimmer)
             Assert.Equal(77,  univ33![18]);  // Projecteur canal DMX 1 (R)
-            Assert.Equal(200, univ33![27]);  // Lyre 1 canal 1 = pan_hi (canal DMX 10)
-            Assert.Equal(128, univ33![32]);  // Lyre 1 canal 6 = dimmer (canal DMX 15)
+            Assert.Equal(200, univ33![87]);  // Lyre 1 canal 1 = pan_hi (canal DMX 70)
+            Assert.Equal(128, univ33![92]);  // Lyre 1 canal 6 = dimmer (canal DMX 75)
         }
     }
 }

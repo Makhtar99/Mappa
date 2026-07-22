@@ -267,10 +267,10 @@
     {"id": "127", "led_count": 170, "universe_start": 132, "channel_start": 0, "led_type": "RGB"},
     {"id": "128", "led_count": 89, "universe_start": 133, "channel_start": 0, "led_type": "RGB"},
     {"id": "Projector", "led_count": 4,  "universe_start": 135, "channel_start": 0,  "led_type": "RAW1"},
-    {"id": "Lyre 1",    "led_count": 13, "universe_start": 135, "channel_start": 9,  "led_type": "RAW1"},
-    {"id": "Lyre 2",    "led_count": 13, "universe_start": 135, "channel_start": 29, "led_type": "RAW1"},
-    {"id": "Lyre 3",    "led_count": 13, "universe_start": 135, "channel_start": 49, "led_type": "RAW1"},
-    {"id": "Lyre 4",    "led_count": 13, "universe_start": 135, "channel_start": 69, "led_type": "RAW1"}
+    {"id": "Lyre 1",    "led_count": 13, "universe_start": 135, "channel_start": 69, "led_type": "RAW1"},
+    {"id": "Lyre 2",    "led_count": 13, "universe_start": 135, "channel_start": 49, "led_type": "RAW1"},
+    {"id": "Lyre 3",    "led_count": 13, "universe_start": 135, "channel_start": 29, "led_type": "RAW1"},
+    {"id": "Lyre 4",    "led_count": 13, "universe_start": 135, "channel_start": 9,  "led_type": "RAW1"}
   ],
   "devices": [],
   "entity_map": [
@@ -403,9 +403,9 @@
     {"entity_start": 19600, "entity_end": 19769, "universe_start": 132, "channel_start": 0, "led_type": "RGB"},
     {"entity_start": 19770, "entity_end": 19858, "universe_start": 133, "channel_start": 0, "led_type": "RGB"},
     {"entity_start": 1,  "entity_end": 4,  "universe_start": 135, "channel_start": 0,  "led_type": "RAW1"},
-    {"entity_start": 10, "entity_end": 22, "universe_start": 135, "channel_start": 9,  "led_type": "RAW1"},
-    {"entity_start": 30, "entity_end": 42, "universe_start": 135, "channel_start": 29, "led_type": "RAW1"},
-    {"entity_start": 50, "entity_end": 62, "universe_start": 135, "channel_start": 49, "led_type": "RAW1"},
-    {"entity_start": 70, "entity_end": 82, "universe_start": 135, "channel_start": 69, "led_type": "RAW1"}
+    {"entity_start": 10, "entity_end": 22, "universe_start": 135, "channel_start": 69, "led_type": "RAW1"},
+    {"entity_start": 30, "entity_end": 42, "universe_start": 135, "channel_start": 49, "led_type": "RAW1"},
+    {"entity_start": 50, "entity_end": 62, "universe_start": 135, "channel_start": 29, "led_type": "RAW1"},
+    {"entity_start": 70, "entity_end": 82, "universe_start": 135, "channel_start": 9,  "led_type": "RAW1"}
   ]
 }

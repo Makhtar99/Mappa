@@ -12,15 +12,21 @@ Commandes en PowerShell a la racine du repo.
 
 ## Mapping DMX officiel (univers 33)
 
-| Appareil | Entites eHuB | Canaux DMX | Adresse DMX physique |
-|---|---|---|---|
-| Projecteur statique | 1..4 (R,V,B,W) | 1..4 | **001** |
-| Lyre 1 | 10..22 (13 canaux) | 10..22 | **010** |
-| Lyre 2 | 30..42 (13 canaux) | 30..42 | **030** |
-| Lyre 3 | 50..62 (13 canaux) | 50..62 | **050** |
-| Lyre 4 | 70..82 (13 canaux) | 70..82 | **070** |
+**Convention** : "Lyre 1" dans Unity = la lyre la plus a GAUCHE physiquement,
+"Lyre 4" = la plus a DROITE. L'inversion des canaux DMX est faite dans
+`ecran.json` pour matcher l'ordre visuel gauche->droite.
 
-Total : 82 canaux occupes sur 512 dans l'univers 33.
+| Nom Unity | Entites eHuB | Canaux DMX | Adresse DMX physique | Position |
+|---|---|---|---|---|
+| Projector | 1..4 (R,V,B,W) | 1..4 | **001** | (statique) |
+| **Lyre 1** | 10..22 (13 canaux) | **70..82** | **070** | GAUCHE |
+| Lyre 2 | 30..42 (13 canaux) | 50..62 | **050** | |
+| Lyre 3 | 50..62 (13 canaux) | 30..42 | **030** | |
+| **Lyre 4** | 70..82 (13 canaux) | **10..22** | **010** | DROITE |
+
+Note : les adresses physiques (010, 030, 050, 070) ne changent PAS. Seul le
+routage `ecran.json` inverse les canaux pour que "Lyre 1" soit la plus a
+gauche cote Unity.
 
 ---
 
@@ -91,10 +97,31 @@ Doit passer en **VERT** (entite 2 = canal DMX 2 = V). Continue avec
 Ouvre `Demo.unity`, lance le Play, selectionne le GameObject `Projector`.
 Dans l'Inspector `ProjectorController` :
 
-- `color = white`, `dimmer = 1`, `white = 0` -> projo devient blanc
-  (canaux R=V=B=255, W=0).
-- Change `color` en rouge pur -> projo rouge.
-- Monte `white = 1`, `color = black` -> projo en blanc froid via W.
+- **`isOn`** : coche/decoche pour allumer/eteindre en direct.
+- **`color`** : selecteur RGB standard Unity, direct sur les canaux R/V/B.
+- **`white`** : 0..1, canal W separe (pour un blanc plus chaud).
+- **`dimmer`** : 0..1, attenuation globale (multiplie R/V/B/W).
+
+Par defaut a l'ouverture : `isOn=on, color=white, dimmer=1` -> le projo
+s'allume en blanc plein des que tu lances le Play.
+
+**Raccourcis clavier** : ajoute le composant `ProjectorKeyboardControl`
+au GameObject `Projector` (drag&drop du `ProjectorController` dans le
+champ `target`). En mode Play :
+- **Espace** : allume/eteint
+- **R / G / B** : rouge / vert / bleu plein
+- **1** : blanc froid (R+V+B)
+- **W** : blanc chaud (canal W dedie)
+- **+ / -** : augmenter/diminuer le dimmer
+
+**Depuis un script tiers** (pour timeline, boutons UI, cues) :
+```csharp
+projector.TurnOn();
+projector.SetColor(Color.red);
+projector.SetColor(1f, 0.5f, 0f); // orange
+projector.SetDimmer(0.5f);
+projector.TurnOff();
+```
 
 Le sniffer local peut confirmer l'emission :
 
@@ -118,8 +145,17 @@ glassworks.
 
 ### 2.a Reglage physique
 
-Regle chaque lyre a son adresse DMX sur son LCD :
-- Lyre 1 = **010**, Lyre 2 = **030**, Lyre 3 = **050**, Lyre 4 = **070**.
+**Adresses DMX physiques** (LCD au dos de chaque lyre, INCHANGEES depuis
+le premier test) :
+- Lyre physique la plus a gauche  = adresse **070** (pilotee par "Lyre 1" dans Unity)
+- Lyre physique 2e depuis la gauche = adresse **050** (Lyre 2)
+- Lyre physique 3e depuis la gauche = adresse **030** (Lyre 3)
+- Lyre physique la plus a droite  = adresse **010** (Lyre 4)
+
+Note : les adresses physiques restent 010/030/050/070. L'inversion Unity
+est faite en logiciel dans `ecran.json` pour que l'ordre Unity corresponde
+a l'ordre visuel gauche->droite.
+
 - Mode = **DMX** (pas "sound"/"auto"/"programme").
 - Verifie aussi qu'elles sont en mode 13 canaux (souvent
   configurable via un menu "channels" ou "mode" sur la lyre).

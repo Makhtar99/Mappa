@@ -737,10 +737,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ProjectorController
   emitter: {fileID: 2000000003}
   baseEntityId: 1
-  color: {r: 0, g: 0, b: 0, a: 1}
+  isOn: 1
+  color: {r: 1, g: 1, b: 1, a: 1}
   white: 0
-  dimmer: 0
-  channelCount: 1
+  dimmer: 1
 --- !u!1 &2000002001
 GameObject:
   m_ObjectHideFlags: 0
