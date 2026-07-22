@@ -66,7 +66,15 @@ namespace Mappa
             var pkt = BuildPacket(universe, dmx512, _sequence);
             _sequence = (byte)(_sequence == 255 ? 1 : _sequence + 1);
             var endpoint = new IPEndPoint(IPAddress.Parse(ip), port);
-            _udp.Send(pkt, pkt.Length, endpoint);
+            try
+            {
+                _udp.Send(pkt, pkt.Length, endpoint);
+            }
+            catch (SocketException)
+            {
+                // Controleur injoignable (hors reseau, eteint...) : on ignore
+                // cet univers pour cette frame plutot que de tuer le routage.
+            }
         }
 
         /// <summary>

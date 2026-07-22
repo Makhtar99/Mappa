@@ -26,3 +26,7 @@ configs/Ecran.json
 /sysinfo.txt
 *.pidb.meta
 *.pdb.meta
+
+# VP9 source video (unreadable by Unity; mp4 transcode is used)
+/assets/my-system-light-show.webm
+/assets/my-system-light-show.webm.meta
