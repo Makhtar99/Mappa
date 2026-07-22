@@ -40,6 +40,7 @@ internal static class Program
             case "anim" when args.Length >= 3: return Anim(args);
             case "image" when args.Length >= 2: return ImageCmd(args);
             case "import" when args.Length >= 2: return Import(args);
+            case "ramp" when args.Length >= 2: return Ramp(args);
             default: PrintUsage(); return 1;
         }
     }
@@ -128,6 +129,21 @@ internal static class Program
         Console.WriteLine("    --sheet <feuille>  feuille a lire (defaut: la 1ere, ou 'eHuB' si presente).");
         Console.WriteLine();
         Console.WriteLine("  Exemple : mappa import panneau.xlsx --out ../configs/panneau.json");
+        Console.WriteLine();
+        Console.WriteLine("ramp : envoie une rampe 0->255->0 progressive sur UNE entite (canal DMX).");
+        Console.WriteLine("       Sert a identifier pan/tilt d'une lyre : la lyre tourne visiblement");
+        Console.WriteLine("       si le canal teste controle un mouvement, sinon rien ne bouge.");
+        Console.WriteLine("  Usage : mappa ramp <config.json> --entity <id> [--ip .. --seconds N --hz 40]");
+        Console.WriteLine("  Options :");
+        Console.WriteLine("    --entity <id>      entite (= canal DMX) a ramper (obligatoire).");
+        Console.WriteLine("    --seconds <n>      duree totale de la rampe aller-retour (defaut: 6).");
+        Console.WriteLine("    --triangle         rampe 0->255->0 (defaut).");
+        Console.WriteLine("    --saw              rampe 0->255 en boucle (dents de scie).");
+        Console.WriteLine("    --ip <adresse>     force l'IP du controleur.");
+        Console.WriteLine("    --hz <n>           frequence d'envoi (defaut: 40).");
+        Console.WriteLine();
+        Console.WriteLine("  Exemple pan lyre1 : mappa ramp configs/ecran.json --entity 10 --seconds 8");
+        Console.WriteLine("  Puis tilt lyre1   : mappa ramp configs/ecran.json --entity 12 --seconds 8");
     }
 
     private static string ResolveConfigsDir()
@@ -161,7 +177,7 @@ internal static class Program
             config.Devices.Add(new Device
             {
                 Id = $"lyre-{i + 1}", Type = "lyre", Universe = baseUniverse,
-                ChannelStart = starts[i], ChannelCount = 13,
+                ChannelStart = starts[i], ChannelCount = 14,
             });
         }
     }
@@ -978,6 +994,98 @@ internal static class Program
         }
         RunRenderLoop(config, plan, state, sender, hz,
             label: $"Envoi image en boucle a {hz} Hz (Ctrl+C pour arreter)...");
+        return 0;
+    }
+
+    // ------------------------------------------------------------------ //
+    // ramp : envoie une rampe temporelle 0->255->0 sur UNE entite (=1 canal
+    // DMX). Sert a identifier les canaux de mouvement (pan/tilt) sur une
+    // lyre : si le canal fait bouger, on voit un mouvement continu au lieu
+    // d'un simple "on/off". Pratique pour distinguer pan (mouvement horizontal
+    // lisse) de tilt (vertical lisse) de dimmer (variation d'intensite).
+    // ------------------------------------------------------------------ //
+    private static int Ramp(string[] args)
+    {
+        string configPath = args[1];
+        string? overrideIp = null;
+        int? entity = null;
+        double seconds = 6.0;
+        int hz = 40;
+        bool saw = false; // false = triangle 0->255->0, true = dents de scie
+
+        for (int i = 2; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--ip" when i + 1 < args.Length: overrideIp = args[++i]; break;
+                case "--entity" when i + 1 < args.Length: entity = int.Parse(args[++i]); break;
+                case "--seconds" when i + 1 < args.Length:
+                    seconds = double.Parse(args[++i], System.Globalization.CultureInfo.InvariantCulture);
+                    break;
+                case "--hz" when i + 1 < args.Length: hz = int.Parse(args[++i]); break;
+                case "--triangle": saw = false; break;
+                case "--saw": saw = true; break;
+                default: Console.Error.WriteLine($"Option inconnue : {args[i]}"); return 1;
+            }
+        }
+
+        if (!entity.HasValue)
+        {
+            Console.Error.WriteLine("--entity <id> obligatoire (ex: --entity 10 pour le 1er canal de lyre1)");
+            return 1;
+        }
+        if (seconds <= 0) seconds = 6.0;
+
+        var config = LoadConfigWithIp(configPath, overrideIp);
+        if (config == null) return 1;
+
+        var plan = new RoutingPlan(config);
+        var state = State.FromConfig(config);
+        if (!state.Contains(entity.Value))
+        {
+            Console.Error.WriteLine($"Entite {entity.Value} absente de la config.");
+            return 1;
+        }
+
+        int periodMs = hz > 0 ? Math.Max(1, 1000 / hz) : 25;
+        int totalFrames = (int)(seconds * hz);
+        bool running = true;
+        Console.CancelKeyPress += (_, e) => { e.Cancel = true; running = false; };
+
+        Console.WriteLine($"Ramp entite {entity.Value} : {(saw ? "saw" : "triangle")} sur {seconds:F1}s a {hz} Hz");
+        Console.WriteLine("Regarde la lyre : mouvement continu = canal de mouvement (pan/tilt).");
+        Console.WriteLine("                  Variation d'intensite = dimmer.");
+        Console.WriteLine("                  Rien = canal inactif/inconnu.");
+
+        using var sender = new ArtNetSender();
+        for (int f = 0; f < totalFrames && running; f++)
+        {
+            double t = (double)f / totalFrames; // 0..1
+            byte v;
+            if (saw)
+            {
+                v = (byte)(t * 255.0);
+            }
+            else
+            {
+                // triangle : 0..1..0
+                double tri = t < 0.5 ? t * 2.0 : (1.0 - t) * 2.0;
+                v = (byte)(tri * 255.0);
+            }
+            state.Set(entity.Value, v, 0, 0);
+            state.MarkUpdated();
+            sender.SendPlan(config, plan.Render(state));
+            System.Threading.Thread.Sleep(periodMs);
+        }
+
+        // Extinction propre.
+        state.Clear();
+        for (int i = 0; i < 3; i++)
+        {
+            sender.SendPlan(config, plan.Render(state));
+            System.Threading.Thread.Sleep(periodMs);
+        }
+        Console.WriteLine("Termine. Canal remis a zero.");
         return 0;
     }
 

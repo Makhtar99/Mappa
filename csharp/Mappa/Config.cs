@@ -6,6 +6,10 @@ namespace Mappa
     /// <summary>Nombre de canaux DMX par LED selon le type.</summary>
     public enum LedType
     {
+        // RAW1 = 1 canal DMX brut par entite. Sert aux appareils DMX (lyres,
+        // projecteurs...) ou l'octet R du State est copie tel quel au canal,
+        // et ou baseEntityId + i = canal i de l'appareil (offset direct).
+        RAW1 = 1,
         RGB = 3,
         RGBW = 4,
     }

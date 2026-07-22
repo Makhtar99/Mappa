@@ -101,6 +101,13 @@ namespace Mappa
                 var addr = kv.Value;
                 byte[] pkt = _packets[addr.Universe];
                 int ch = addr.Channel;
+                if (addr.Channels == 1)
+                {
+                    // RAW1 : on copie l'octet R du state tel quel au canal.
+                    // Sert aux appareils DMX (lyre, projecteur) ou une entite = un canal.
+                    pkt[ch] = buf[baseIdx];
+                    continue;
+                }
                 pkt[ch] = buf[baseIdx];         // R
                 pkt[ch + 1] = buf[baseIdx + 1]; // V
                 pkt[ch + 2] = buf[baseIdx + 2]; // B
