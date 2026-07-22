@@ -44,7 +44,7 @@ MonoBehaviour:
   m_Name: SceneClip
   m_EditorClassIdentifier: Assembly-CSharp::SceneClip
   template:
-    scene: 8
+    scene: 9
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0
