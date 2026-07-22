@@ -51,6 +51,14 @@ namespace Mappa.Ui
         private string _targets = "—";
         private readonly DispatcherTimer _uiTimer;
 
+        // Récepteur eHuB PARTAGÉ entre le nœud ① (débogage) et la case « Recevoir
+        // eHuB » du visualiseur. Un seul socket peut écouter un port UDP donné :
+        // en ouvrir deux faisait échouer le second en silence côté utilisateur.
+        // Compteur d'usages : on ferme le socket quand plus personne ne s'en sert.
+        private EhubReceiver? _sharedRx;
+        private int _sharedRxPort;
+        private int _sharedRxUsers;
+
         // Débogage : récepteur eHuB du nœud ①. Les moniteurs affichent ce qu'il
         // reçoit (rien tant qu'aucun eHuB n'arrive).
         private EhubReceiver? _debugRx;
@@ -112,6 +120,7 @@ namespace Mappa.Ui
             FilterStartBox.TextChanged += (_, _) => _debugDirty = true;
             FilterEndBox.TextChanged += (_, _) => _debugDirty = true;
             UniverseFilterBox.TextChanged += (_, _) => _debugDirty = true;
+            AccumulateChk.IsCheckedChanged += (_, _) => _debugDirty = true;
             TestUniverseBox.TextChanged += (_, _) => RefreshNode4Ip();
             SendFrameBtn.Click += (_, _) => SendArtNet(_lastDmx ?? FullFrame(0));
             TestWhiteBtn.Click += (_, _) => SendArtNet(FullFrame(255));
@@ -258,8 +267,8 @@ namespace Mappa.Ui
 
             if (!(EhubChk.IsChecked ?? false) && _ehubFaker != null)
             {
-                _ehubFaker.Dispose();
                 _ehubFaker = null;
+                ReleaseReceiver();
             }
 
             if (EhubChk.IsChecked ?? false)
@@ -269,7 +278,8 @@ namespace Mappa.Ui
                     int port = int.TryParse(EhubPortBox.Text, out var p) ? p : Ehub.DefaultUdpPort;
                     try
                     {
-                        _ehubFaker = new EhubFaker(port);
+                        // Récepteur partagé : le nœud ① écoute peut-être déjà ce port.
+                        _ehubFaker = new EhubFaker(AcquireReceiver(port));
                     }
                     catch (Exception ex)
                     {
@@ -293,6 +303,37 @@ namespace Mappa.Ui
         }
 
         /// <summary>
+        /// Ouvre (ou réutilise) LE récepteur eHuB de l'application. Un port UDP ne
+        /// peut être écouté que par un seul socket : si le visualiseur et le nœud ①
+        /// demandent le même port, ils partagent le même récepteur. Lève une
+        /// exception si on demande un AUTRE port pendant qu'un usage est en cours.
+        /// </summary>
+        private EhubReceiver AcquireReceiver(int port)
+        {
+            if (_sharedRx != null && _sharedRxUsers > 0 && _sharedRxPort != port)
+            {
+                throw new InvalidOperationException(
+                    $"le port {_sharedRxPort} est déjà écouté ; utilise le même port des deux côtés");
+            }
+            if (_sharedRx == null)
+            {
+                _sharedRx = new EhubReceiver(port);
+                _sharedRxPort = port;
+            }
+            _sharedRxUsers++;
+            return _sharedRx;
+        }
+
+        /// <summary>Rend un usage du récepteur partagé ; ferme le socket au dernier.</summary>
+        private void ReleaseReceiver()
+        {
+            if (_sharedRxUsers > 0) _sharedRxUsers--;
+            if (_sharedRxUsers != 0) return;
+            _sharedRx?.Dispose();
+            _sharedRx = null;
+        }
+
+        /// <summary>
         /// Nœud ① : démarre/arrête l'écoute eHuB sur le port saisi. Tant qu'on
         /// n'écoute pas (ou que rien n'arrive), les moniteurs restent vides.
         /// </summary>
@@ -301,15 +342,17 @@ namespace Mappa.Ui
             if (_debugRx == null)
             {
                 int port = int.TryParse(InPortBox.Text, out var p) ? p : Ehub.DefaultUdpPort;
-                try { _debugRx = new EhubReceiver(port); }
+                try { _debugRx = AcquireReceiver(port); }
                 catch (Exception ex) { Status("Écoute eHuB impossible : " + ex.Message); return; }
                 ListenBtn.Content = "■ Stop";
-                RxInfo.Text = "à l'écoute…";
+                RxInfo.Text = _sharedRxUsers > 1
+                    ? $"à l'écoute sur {port} (partagé avec le visualiseur)…"
+                    : $"à l'écoute sur {port}…";
             }
             else
             {
-                _debugRx.Dispose();
                 _debugRx = null;
+                ReleaseReceiver();
                 ListenBtn.Content = "▶ Écouter";
                 RxInfo.Text = "arrêté";
             }
@@ -513,10 +556,64 @@ namespace Mappa.Ui
                 return;
             }
 
-            PaintPipeline(selectedPacket.ToState(), start, end);
+            // Mode cumulé (défaut) : l'état courant de la plage, reconstitué à partir
+            // de TOUS les paquets reçus — c'est ce que fait le routage, et c'est stable
+            // à l'écran. Sinon : le seul dernier paquet, qui clignote dès que la source
+            // alterne des plages différentes.
+            PaintPipeline(BuildMonitorState(selectedPacket, start, end), start, end);
             ShowUniversesFedBy(selectedPacket);
+
+            // La plage d'IDs du paquet est indispensable pour régler ② : sans elle,
+            // on inspecte des entités absentes du paquet et tout reste noir, sans
+            // qu'aucun message ne dise pourquoi.
+            string ids = EntitySpan(selectedPacket, out bool overlaps, start, end);
+            // En mode cumulé, un paquet hors plage est normal (la source alterne) :
+            // l'avertissement n'a de sens que si l'on n'affiche QUE ce paquet.
+            bool warn = !overlaps && !(AccumulateChk.IsChecked ?? true);
             RxInfo.Text = $"reçu : {rx} paquet(s) · {selectedPacket.RemoteEndPoint.Address} · "
-                        + $"univers affiché {selectedPacket.Universe} (reçus : {UniversesSeen(received)})";
+                        + $"univers affiché {selectedPacket.Universe} (reçus : {UniversesSeen(received)})\n"
+                        + $"entités du dernier paquet : {ids}"
+                        + (warn ? $"  ⚠ hors de la plage ② ({start}–{end}) : règle-la sur ces IDs" : "");
+        }
+
+        /// <summary>
+        /// L'état à peindre en ② : soit l'état COURANT de la plage, reconstitué à
+        /// partir de tous les paquets reçus (le récepteur mémorise la dernière
+        /// couleur connue de chaque entité, comme le routage), soit le contenu du
+        /// seul dernier paquet quand on veut inspecter un paquet isolé.
+        /// </summary>
+        private State BuildMonitorState(EhubReceiver.PacketSnapshot packet, int start, int end)
+        {
+            if (!(AccumulateChk.IsChecked ?? true) || _debugRx == null) return packet.ToState();
+
+            int count = Math.Min(end - start + 1, MaxMonitoredLeds);
+            var ids = new List<int>(Math.Max(0, count));
+            for (int i = 0; i < count; i++) ids.Add(start + i);
+
+            var state = new State(ids);
+            _debugRx.Fill(state);   // les IDs hors plage sont ignorés par State.Set
+            return state;
+        }
+
+        /// <summary>
+        /// Plage d'IDs d'entités portée par un paquet, et si elle recoupe la plage
+        /// inspectée en ②. Sans recoupement, les moniteurs sont légitimement noirs.
+        /// </summary>
+        private static string EntitySpan(EhubReceiver.PacketSnapshot packet, out bool overlaps,
+                                         int start, int end)
+        {
+            overlaps = false;
+            var list = packet.EntityIds;
+            if (list.Length == 0) return "aucune";
+
+            int min = int.MaxValue, max = int.MinValue;
+            foreach (int id in list)
+            {
+                if (id < min) min = id;
+                if (id > max) max = id;
+                if (id >= start && id <= end) overlaps = true;
+            }
+            return $"{min}–{max} ({list.Length})";
         }
 
         /// <summary>Liste triée des univers eHuB présents dans les paquets reçus.</summary>
@@ -1180,8 +1277,7 @@ namespace Mappa.Ui
             _fakerAnimating = false;   // arrête la boucle du faker
             _artStreaming = false;     // arrête l'émission ArtNet continue
             _engine?.Dispose();
-            _ehubFaker?.Dispose();
-            _debugRx?.Dispose();
+            _sharedRx?.Dispose();       // récepteur eHuB partagé (nœud ① + visualiseur)
             _artSender?.Dispose();
             _simUdp?.Dispose();
             base.OnClosed(e);
