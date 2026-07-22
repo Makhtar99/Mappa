@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -26,6 +25,7 @@ namespace Mappa.Ui
     {
         private const int Cell = 4;        // taille d'une LED a l'ecran (px)
         private const int LedsPerRow = 170; // 512 / 3 = 170 LED RVB par univers
+        private const int MaxMonitoredLeds = 170; // plafond d'affichage du moniteur ② (1 univers RVB)
 
         // Couleur du quadrillage des moniteurs (contour de chaque case).
         private static readonly Avalonia.Media.IBrush GridBrush =
@@ -38,25 +38,19 @@ namespace Mappa.Ui
         private byte[] _snap = Array.Empty<byte>();
         private int _bmpUniverseCount = -1;
         private readonly DispatcherTimer _uiTimer;
-        private readonly ObservableCollection<EhubReceiver.PacketSnapshot> _packetItems = new ObservableCollection<EhubReceiver.PacketSnapshot>();
 
         // Débogage : récepteur eHuB du nœud ①. Les moniteurs affichent ce qu'il
         // reçoit (rien tant qu'aucun eHuB n'arrive).
         private EhubReceiver? _debugRx;
         private long _lastRxPainted = -1;
         private bool _debugDirty = true;
-        private string? _selectedPacketKey;
-        private string? _lastUniverseFilterText;
         private byte[]? _lastDmx;           // dernière trame DMX affichée (pour « Envoyer la trame »)
-        private ArtNetReceiver? _artRx;     // moniteur ArtNet réseau (⑤)
-        private readonly Dictionary<int, byte[]> _artSentMirror = new Dictionary<int, byte[]>();
-        private long _lastArtPainted = -1;
-        private bool _artListenEnabled;
         private bool _fakerAnimating;       // faker : animation en cours
         private int _fakerFrame;            // indice de frame d'animation
         private int _fakerDelayMs = 120;    // cadence du faker animé / rafale
         private long _lastFakerTickMs;      // horodatage du dernier envoi faker
         private bool _fakerBurstRunning;    // évite les rafales concurrentes
+        private System.Net.Sockets.UdpClient? _simUdp; // socket du faux Unity (réutilisé)
         private ArtNetSender? _artSender;   // émetteur ArtNet du nœud ④ (réutilisé)
         private bool _artStreaming;         // ④ : émission en continu (hardware)
         private bool _artStreamLoopRunning; // boucle d'émission continue en cours
@@ -90,16 +84,17 @@ namespace Mappa.Ui
             SendFrameBtn.Click += (_, _) => SendArtNet(_lastDmx ?? FullFrame(0));
             TestWhiteBtn.Click += (_, _) => SendArtNet(FullFrame(255));
             TestBlackBtn.Click += (_, _) => SendArtNet(FullFrame(0));
-            ArtListenBtn.Click += (_, _) => ToggleArtListen();
             AnimateBtn.Click += (_, _) => ToggleAnimate();
             StreamBtn.Click += (_, _) => ToggleStream();
-            ArtViewUniverseBox.TextChanged += (_, _) => _lastArtPainted = -1;
+            ModeObserveRadio.IsCheckedChanged += (_, _) => ApplyDebugMode();
+            ModeTestRadio.IsCheckedChanged += (_, _) => ApplyDebugMode();
 
             _uiTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
             _uiTimer.Tick += (_, _) => OnUiTick();
             _uiTimer.Start();
 
-            RefreshNode4Ip(); // affiche « charge une config » au démarrage
+            RefreshNode4Ip();  // affiche « charge une config » au démarrage
+            ApplyDebugMode();  // démarre en Observation : émission désactivée
         }
 
         private void UpdateFakerDelay()
@@ -258,7 +253,6 @@ namespace Mappa.Ui
                 catch (Exception ex) { Status("Écoute eHuB impossible : " + ex.Message); return; }
                 ListenBtn.Content = "■ Stop";
                 RxInfo.Text = "à l'écoute…";
-                _packetItems.Clear();
             }
             else
             {
@@ -266,7 +260,6 @@ namespace Mappa.Ui
                 _debugRx = null;
                 ListenBtn.Content = "▶ Écouter";
                 RxInfo.Text = "arrêté";
-                _packetItems.Clear();
             }
             _debugDirty = true;
         }
@@ -346,8 +339,10 @@ namespace Mappa.Ui
             try
             {
                 byte[] packet = Ehub.EncodeUpdate(ehubUniverse, ids, st);
-                using var udp = new System.Net.Sockets.UdpClient();
-                udp.Send(packet, packet.Length,
+                // Socket réutilisé : en animation on envoie ~30 frames/s, ouvrir
+                // et fermer un UdpClient à chaque fois épuiserait les ports éphémères.
+                _simUdp ??= new System.Net.Sockets.UdpClient();
+                _simUdp.Send(packet, packet.Length,
                     new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, port));
                 if (announce && !_fakerAnimating) Status($"Frame eHuB « {motif} » envoyée.");
                 return true;
@@ -436,85 +431,64 @@ namespace Mappa.Ui
             // Rien reçu -> on n'affiche rien.
             if (_debugRx == null || rx == 0)
             {
-                _packetItems.Clear();
-                _selectedPacketKey = null;
                 LedMonitor.Children.Clear();
                 DmxMonitor.Children.Clear();
                 ArtNetMonitor.Children.Clear();
                 return;
             }
 
-            var packets = _debugRx.SnapshotPackets();
-            string universeFilterText = (UniverseFilterBox.Text ?? string.Empty).Trim();
-            byte? universeFilter = TryParseByte(universeFilterText);
-            var visiblePackets = new List<EhubReceiver.PacketSnapshot>(packets.Count);
-            for (int i = 0; i < packets.Count; i++)
-            {
-                var packet = packets[i];
-                if (universeFilter.HasValue && packet.Universe != universeFilter.Value) continue;
-                visiblePackets.Add(packet);
-            }
-
-            SyncPacketList(visiblePackets, universeFilterText);
-
-            var selectedPacket = GetSelectedPacket(visiblePackets) ?? GetLastPacket(visiblePackets);
+            // On inspecte le DERNIER paquet reçu (filtré par univers si demandé) :
+            // c'est l'image courante du système.
+            var received = _debugRx.SnapshotPackets();
+            byte? universeFilter = TryParseByte(UniverseFilterBox.Text);
+            var selectedPacket = LastPacket(received, universeFilter);
             if (selectedPacket == null)
             {
                 LedMonitor.Children.Clear();
                 DmxMonitor.Children.Clear();
                 ArtNetMonitor.Children.Clear();
-                RxInfo.Text = $"reçu : {rx} paquet(s)";
+                // On annonce les univers RÉELLEMENT reçus : sans ça, un filtre qui
+                // ne matche rien donne un écran vide sans dire quoi saisir.
+                RxInfo.Text = $"reçu : {rx} paquet(s) — rien sur l'univers "
+                            + $"{universeFilter}. Univers reçus : {UniversesSeen(received)}";
                 return;
             }
-
 
             if (!int.TryParse(FilterStartBox.Text, out int start) ||
                 !int.TryParse(FilterEndBox.Text, out int end) || end < start)
+            {
+                RxInfo.Text = "plage ② invalide (Start ≤ End)";
                 return;
+            }
 
             PaintPipeline(selectedPacket.ToState(), start, end);
-            RxInfo.Text = $"reçu : {rx} paquet(s) - {selectedPacket.RemoteEndPoint.Address} u{selectedPacket.Universe}";
+            ShowUniversesFedBy(selectedPacket);
+            RxInfo.Text = $"reçu : {rx} paquet(s) · {selectedPacket.RemoteEndPoint.Address} · "
+                        + $"univers affiché {selectedPacket.Universe} (reçus : {UniversesSeen(received)})";
         }
 
-        private void SyncPacketList(IReadOnlyList<EhubReceiver.PacketSnapshot> packets, string universeFilterText)
+        /// <summary>Liste triée des univers eHuB présents dans les paquets reçus.</summary>
+        private static string UniversesSeen(IReadOnlyList<EhubReceiver.PacketSnapshot> packets)
         {
-            bool filterChanged = !string.Equals(_lastUniverseFilterText, universeFilterText, StringComparison.Ordinal);
-            _lastUniverseFilterText = universeFilterText;
-
-            if (filterChanged || packets.Count < _packetItems.Count)
-            {
-                string? selectedKey = _selectedPacketKey;
-                _packetItems.Clear();
-                for (int i = 0; i < packets.Count; i++)
-                {
-                    _packetItems.Add(packets[i]);
-                }
-
-                _selectedPacketKey = null;
-                return;
-            }
-
-            for (int i = _packetItems.Count; i < packets.Count; i++)
-            {
-                _packetItems.Add(packets[i]);
-            }
+            var seen = new SortedSet<byte>();
+            for (int i = 0; i < packets.Count; i++) seen.Add(packets[i].Universe);
+            return seen.Count == 0 ? "aucun" : string.Join(", ", seen);
         }
 
-        private EhubReceiver.PacketSnapshot? GetSelectedPacket(IReadOnlyList<EhubReceiver.PacketSnapshot> packets)
+        /// <summary>
+        /// Dernier paquet reçu, éventuellement restreint à un univers eHuB.
+        /// Retourne null si aucun paquet ne correspond au filtre.
+        /// </summary>
+        private static EhubReceiver.PacketSnapshot? LastPacket(
+            IReadOnlyList<EhubReceiver.PacketSnapshot> packets, byte? universeFilter)
         {
-            if (string.IsNullOrEmpty(_selectedPacketKey)) return null;
-
-            for (int i = 0; i < packets.Count; i++)
+            for (int i = packets.Count - 1; i >= 0; i--)
             {
-                if (packets[i].Key == _selectedPacketKey)
+                if (!universeFilter.HasValue || packets[i].Universe == universeFilter.Value)
                     return packets[i];
             }
-
             return null;
         }
-
-        private static EhubReceiver.PacketSnapshot? GetLastPacket(IReadOnlyList<EhubReceiver.PacketSnapshot> packets)
-            => packets.Count > 0 ? packets[packets.Count - 1] : null;
 
         private static byte? TryParseByte(string? text)
         {
@@ -530,6 +504,12 @@ namespace Mappa.Ui
         {
             LedMonitor.Children.Clear();
             DmxMonitor.Children.Clear();
+
+            // Garde-fou : un moniteur, c'est un échantillon, pas un mur. Une plage
+            // trop large créerait des dizaines de milliers de contrôles et figerait
+            // la fenêtre — et de toute façon un univers DMX ne porte pas plus de
+            // 170 LED RVB.
+            if (end - start + 1 > MaxMonitoredLeds) end = start + MaxMonitoredLeds - 1;
 
             var dmx = new byte[Config.DmxChannelsPerUniverse];
             int used = 0;
@@ -548,6 +528,7 @@ namespace Mappa.Ui
             }
             PaintArtNetMonitor(dmx, used);
             _lastDmx = dmx;   // mémorisée pour « Envoyer la trame »
+            RefreshArtHeader();
         }
 
         /// <summary>Une trame DMX de 512 canaux, tous à <paramref name="level"/> (255 = blanc, 0 = noir).</summary>
@@ -567,18 +548,25 @@ namespace Mappa.Ui
             _artStreamFrame = dmx;   // trame que le mode « Continu » répétera
             if (SendOnce(dmx, out string ip, out int universe))
             {
-                MirrorArtNet(universe, dmx);
                 Status(_artStreaming
                     ? $"Émission continue vers {ip}, univers {universe}."
                     : $"ArtNet envoyé à {ip}, univers {universe}.");
             }
         }
 
-        /// <summary>Envoie UNE trame ArtNet vers l'IP/univers du nœud ④ (émetteur réutilisé).</summary>
+        /// <summary>
+        /// Envoie UNE trame ArtNet vers l'IP/univers du nœud ④ (émetteur réutilisé).
+        /// Le numéro saisi peut être un index global de config ; on émet toujours
+        /// l'univers ArtNet LOCAL du contrôleur (0..31), comme le fait le routage
+        /// réel (ArtNetSender.SendPlan). Sans cette traduction, un index global
+        /// partirait tel quel et le contrôleur ignorerait la trame en silence.
+        /// </summary>
         private bool SendOnce(byte[] dmx, out string ip, out int universe)
         {
             ip = TestIpBox.Text?.Trim() ?? "";
             universe = int.TryParse(TestUniverseBox.Text, out var u) ? u : 0;
+            var routed = ResolveController(universe);
+            if (routed.HasValue) universe = routed.Value.local;
             if (string.IsNullOrEmpty(ip))
             {
                 Status("Renseigne une IP dans le nœud ④ avant d'envoyer.");
@@ -587,10 +575,9 @@ namespace Mappa.Ui
             }
             try
             {
+                int port = int.TryParse(TestPortBox.Text, out var p) ? p : 6454;
                 _artSender ??= new ArtNetSender();
-                _artSender.Send(ip, universe, dmx);
-                if (_artListenEnabled)
-                    MirrorArtNet(universe, dmx);
+                _artSender.Send(ip, universe, dmx, port);
                 return true;
             }
             catch (Exception ex)
@@ -602,16 +589,54 @@ namespace Mappa.Ui
         }
 
         /// <summary>
-        /// Mémorise localement la dernière trame ArtNet envoyée pour permettre au
-        /// moniteur ⑤ d'afficher quelque chose même si aucun paquet ne revient du réseau.
+        /// Applique le mode de la page débogage.
+        ///  - Observation (défaut) : écoute seule, TOUTE émission est désactivée
+        ///    → on ne peut pas perturber le système en production.
+        ///  - Test : les boutons d'émission sont actifs, avec un bandeau d'alerte.
+        /// Repasser en Observation coupe immédiatement les émissions en cours.
         /// </summary>
-        private void MirrorArtNet(int universe, byte[] dmx)
+        private void ApplyDebugMode()
         {
-            var copy = new byte[dmx.Length];
-            Buffer.BlockCopy(dmx, 0, copy, 0, dmx.Length);
-            lock (_artSentMirror)
+            bool test = ModeTestRadio.IsChecked ?? false;
+
+            SimulateUnityBtn.IsEnabled = test;
+            AnimateBtn.IsEnabled = test;
+            BurstBtn.IsEnabled = test;
+            SendFrameBtn.IsEnabled = test;
+            TestWhiteBtn.IsEnabled = test;
+            TestBlackBtn.IsEnabled = test;
+            StreamBtn.IsEnabled = test;
+            EmitWarning.IsVisible = test;
+
+            // En Observation, la carte Simulation disparaît : le pipeline commence
+            // alors à ① et n'affiche QUE du signal réellement reçu.
+            SimulationCard.IsVisible = test;
+            SimulationArrow.IsVisible = test;
+
+            // L'IP du nœud ④ change de nature selon le mode :
+            //  - Observation : information LUE dans la config (« cet univers part là »),
+            //    donc non modifiable — on n'oriente pas un flux qu'on se contente de regarder.
+            //  - Test : commande d'émission, donc modifiable (cibler un contrôleur précis).
+            TestIpBox.IsReadOnly = !test;
+            TestIpBox.Opacity = test ? 1.0 : 0.6;
+
+            // L'univers reste éditable dans les deux modes : il paramètre l'APERÇU
+            // du paquet (en-tête + IP résolue). En Observation rien ne part, donc
+            // le modifier est sans effet sur le système observé.
+            Node4Role.Text = test
+                ? "Univers + IP + port = destination réelle. Un envoi allume la sortie correspondante."
+                : "Aperçu seul : change l'univers pour voir le paquet qui partirait. Rien n'est émis.";
+
+            if (!test)
             {
-                _artSentMirror[universe] = copy;
+                // Sécurité : on coupe tout ce qui émet en repassant en observation.
+                if (_fakerAnimating) { _fakerAnimating = false; AnimateBtn.Content = "▶ Animer"; }
+                if (_artStreaming) { _artStreaming = false; StreamBtn.Content = "▶ Continu"; }
+                Status("Mode Observation : écoute seule, aucune émission.");
+            }
+            else
+            {
+                Status("Mode Test : l'outil peut ÉMETTRE sur le réseau.");
             }
         }
 
@@ -677,9 +702,10 @@ namespace Mappa.Ui
 
         /// <summary>
         /// Nœud ④ : affiche vers quelle IP (contrôleur) partirait l'univers saisi,
-        /// résolu DEPUIS LA CONFIG (univers → contrôleur → IP). Lecture seule :
-        /// c'est un vérificateur. Il signale les univers « non routés » (aucun
-        /// contrôleur ne les prend), un bug de config classique à débusquer.
+        /// résolu DEPUIS LA CONFIG (univers → contrôleur → IP), ainsi que le
+        /// numéro d'univers LOCAL réellement écrit dans l'en-tête ArtNet.
+        /// Il signale les univers « non routés » (aucun contrôleur ne les prend),
+        /// un bug de config classique à débusquer.
         /// </summary>
         private void RefreshNode4Ip()
         {
@@ -692,16 +718,136 @@ namespace Mappa.Ui
             if (res.HasValue)
             {
                 TestIpBox.Text = res.Value.ip;                       // pré-remplit (modifiable)
-                Node4Hint.Text = $"→ {res.Value.id} (depuis la config)";
+                TestPortBox.Text = res.Value.port.ToString();
+                // On montre la traduction quand les deux numéros diffèrent : c'est
+                // l'étape que le routage fait en silence et qu'aucun autre nœud n'expose.
+                string head = res.Value.local == uni
+                    ? $"→ {res.Value.id} · univers ArtNet {res.Value.local}"
+                    : $"→ {res.Value.id} · index global {uni} → univers ArtNet {res.Value.local}";
+                // On indique aussi QUELLES entités la config pose sur cet univers :
+                // c'est le chaînon manquant entre le numéro d'univers (④) et les
+                // LEDs inspectées (②), que rien ne reliait jusqu'ici.
+                var range = EntityRangeFor(uni);
+                Node4Hint.Text = range.HasValue
+                    ? $"{head}\nporte les entités {range.Value.first}–{range.Value.last}"
+                    : $"{head}\naucune entité mappée sur cet univers";
             }
             else
             {
+                // Pas de contrôleur pour cet univers : on n'affiche pas une IP
+                // périmée qui ferait croire à une cible valide.
+                TestIpBox.Text = "";
                 Node4Hint.Text = "⚠ univers non routé dans la config";
             }
+            RefreshArtHeader();
         }
 
-        /// <summary>Cherche dans la config le contrôleur (IP + id) d'un univers donné.</summary>
-        private (string ip, string id)? ResolveController(int universe)
+        /// <summary>
+        /// Nœud ④ : affiche l'en-tête ArtNet RÉEL (les 18 premiers octets), tel
+        /// que <see cref="ArtNetSender.BuildPacket"/> le fabriquerait. C'est ce
+        /// qui distingue ④ de ③ : ③ montre les canaux, ④ montre l'enveloppe qui
+        /// les transporte — et donc l'effet visible du numéro d'univers.
+        /// </summary>
+        private void RefreshArtHeader()
+        {
+            int typed = int.TryParse(TestUniverseBox.Text, out var u) ? u : 0;
+            var routed = ResolveController(typed);
+            int universe = routed?.local ?? typed;
+
+            byte[] pkt = ArtNetSender.BuildPacket(universe, _lastDmx ?? Array.Empty<byte>());
+            int dataLen = (pkt[16] << 8) | pkt[17];
+
+            ArtHeaderText.Text =
+                $"\"Art-Net\\0\"   {Hex(pkt, 0, 8)}\n" +
+                $"OpCode ArtDMX {Hex(pkt, 8, 2)}\n" +
+                $"Version 14    {Hex(pkt, 10, 2)}\n" +
+                $"Seq / Phys    {Hex(pkt, 12, 2)}\n" +
+                $"Univers {universe,-5} {Hex(pkt, 14, 2)}\n" +
+                $"Longueur {dataLen,-4} {Hex(pkt, 16, 2)}";
+        }
+
+        /// <summary>Formate <paramref name="count"/> octets en hexadécimal.</summary>
+        private static string Hex(byte[] data, int offset, int count)
+        {
+            var sb = new System.Text.StringBuilder(count * 3);
+            for (int i = 0; i < count; i++)
+            {
+                if (i > 0) sb.Append(' ');
+                sb.Append(data[offset + i].ToString("X2"));
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Univers ArtNet sur lequel la config pose cette entité (null si non mappée).
+        /// C'est la question inverse de <see cref="EntityRangeFor"/>, et c'est la
+        /// vraie règle du routage : l'univers se déduit des ENTITÉS transportées,
+        /// jamais du numéro d'univers eHuB (les deux numérotations sont distinctes).
+        /// </summary>
+        private int? UniverseForEntity(int entityId)
+        {
+            if (_config == null) return null;
+            foreach (var m in _config.EntityMap)
+                if (entityId >= m.EntityStart && entityId <= m.EntityEnd)
+                    return m.UniverseStart;
+            return null;
+        }
+
+        /// <summary>
+        /// Fait le lien entre ce qu'on REÇOIT (①) et ce qui PARTIRAIT (④) : les
+        /// entités du paquet eHuB observé sont converties, via la config, en
+        /// univers ArtNet. Un même paquet peut en alimenter plusieurs — c'est
+        /// justement ce qu'aucune correspondance de numéros ne pourrait deviner.
+        /// Purement informatif : on ne force pas le champ, l'utilisateur reste maître.
+        /// </summary>
+        private void ShowUniversesFedBy(EhubReceiver.PacketSnapshot packet)
+        {
+            if (_config == null)
+            {
+                Node4Feeds.Text = "";
+                return;
+            }
+
+            var fed = new SortedSet<int>();
+            int unmapped = 0;
+            foreach (int id in packet.EntityIds)
+            {
+                int? u = UniverseForEntity(id);
+                if (u.HasValue) fed.Add(u.Value); else unmapped++;
+            }
+
+            if (fed.Count == 0)
+            {
+                Node4Feeds.Text = "⚠ aucune entité de ce paquet n'est mappée dans la config";
+                return;
+            }
+            Node4Feeds.Text = $"ce paquet alimente les univers ArtNet : {string.Join(", ", fed)}"
+                            + (unmapped > 0 ? $"  ({unmapped} entité(s) non mappée(s))" : "");
+        }
+
+        /// <summary>
+        /// Plage d'entités que la config pose sur cet univers (null si aucune).
+        /// C'est ce que le vrai routage utilise pour décider quelle entité part où.
+        /// </summary>
+        private (int first, int last)? EntityRangeFor(int universe)
+        {
+            if (_config == null) return null;
+            int first = int.MaxValue, last = int.MinValue;
+            foreach (var m in _config.EntityMap)
+            {
+                if (m.UniverseStart != universe) continue;
+                if (m.EntityStart < first) first = m.EntityStart;
+                if (m.EntityEnd > last) last = m.EntityEnd;
+            }
+            return first <= last ? (first, last) : null;
+        }
+
+        /// <summary>
+        /// Cherche dans la config le contrôleur d'un univers donné. Accepte les
+        /// deux numérotations (index global ou univers ArtNet local) et retourne
+        /// aussi le numéro LOCAL (0..31), seul compris par le contrôleur.
+        /// </summary>
+        private (string ip, string id, int local, int port)? ResolveController(int universe)
         {
             if (_config == null) return null;
             foreach (var u in _config.Universes)
@@ -709,7 +855,7 @@ namespace Mappa.Ui
                 if (u.Index == universe || u.ArtNetUniverse == universe)
                 {
                     foreach (var c in _config.Controllers)
-                        if (c.Id == u.ControllerId) return (c.Ip, c.Id);
+                        if (c.Id == u.ControllerId) return (c.Ip, c.Id, u.EffectiveArtNetUniverse, c.Port);
                 }
             }
             return null;
@@ -741,76 +887,6 @@ namespace Mappa.Ui
                     BorderThickness = GridLine,
                 });
             }
-        }
-
-        /// <summary>
-        /// Moniteur ArtNet réseau (P8) : démarre/arrête l'écoute du port ArtNet.
-        /// Écoute ce qui circule VRAIMENT sur le réseau (la sortie du routage).
-        /// </summary>
-        private void ToggleArtListen()
-        {
-            if (_artRx == null)
-            {
-                int port = int.TryParse(ArtPortBox.Text, out var p) ? p : 6454;
-                try { _artRx = new ArtNetReceiver(port); }
-                catch (Exception ex) { Status("Écoute ArtNet impossible : " + ex.Message); return; }
-                _artListenEnabled = true;
-                ArtListenBtn.Content = "■ Stop";
-                ArtRxInfo.Text = $"à l'écoute sur {port}…";
-            }
-            else
-            {
-                _artListenEnabled = false;
-                _artRx.Dispose();
-                _artRx = null;
-                ArtListenBtn.Content = "▶ Écouter";
-                ArtRxInfo.Text = "arrêté";
-                ArtDmxMonitor.Children.Clear();
-                lock (_artSentMirror)
-                {
-                    _artSentMirror.Clear();
-                }
-            }
-            _lastArtPainted = -1;
-        }
-
-        /// <summary>Rafraîchit le moniteur ArtNet : liste des univers reçus + DMX de l'univers demandé.</summary>
-        private void UpdateArtMonitor()
-        {
-            int want = int.TryParse(ArtViewUniverseBox.Text, out var v) ? v : 0;
-
-            if (_artRx != null)
-            {
-                long rx = _artRx.PacketsReceived;
-                var universes = _artRx.Snapshot();
-                if (rx != _lastArtPainted)
-                {
-                    _lastArtPainted = rx;
-                    ArtRxInfo.Text = universes.Count == 0
-                        ? $"reçu : 0 paquet (rien sur le réseau)"
-                        : $"reçu : {rx} paquets — univers : {string.Join(", ", universes.Select(u => u.Universe))}";
-
-                    ArtNetReceiver.UniverseSnapshot? shown = null;
-                    foreach (var u in universes) if (u.Universe == want) { shown = u; break; }
-                    if (shown != null)
-                    {
-                        PaintDmxGrid(ArtDmxMonitor, shown.Dmx, 96);
-                        return;
-                    }
-                }
-            }
-
-            lock (_artSentMirror)
-            {
-                if (_artSentMirror.TryGetValue(want, out var mirror))
-                {
-                    ArtRxInfo.Text = "miroir local : dernière trame envoyée par le nœud ④";
-                    PaintDmxGrid(ArtDmxMonitor, mirror, Math.Min(96, mirror.Length));
-                    return;
-                }
-            }
-
-            ArtDmxMonitor.Children.Clear();
         }
 
         /// <summary>Une case LED (16x16) de la couleur donnée, avec contour de grille.</summary>
@@ -851,7 +927,6 @@ namespace Mappa.Ui
                 }
             }
             UpdateDebugMonitors(); // onglet Débogage : marche même sans config chargée
-            UpdateArtMonitor();    // moniteur ArtNet réseau (⑤)
 
             if (_engine == null) return;
 
@@ -943,11 +1018,13 @@ namespace Mappa.Ui
         protected override void OnClosed(EventArgs e)
         {
             _uiTimer.Stop();
+            _fakerAnimating = false;   // arrête la boucle du faker
+            _artStreaming = false;     // arrête l'émission ArtNet continue
             _engine?.Dispose();
             _ehubFaker?.Dispose();
             _debugRx?.Dispose();
-            _artRx?.Dispose();
             _artSender?.Dispose();
+            _simUdp?.Dispose();
             base.OnClosed(e);
         }
     }

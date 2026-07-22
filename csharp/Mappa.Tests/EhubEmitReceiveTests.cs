@@ -16,6 +16,36 @@ namespace Mappa.Tests
     /// </summary>
     public class EhubEmitReceiveTests
     {
+        /// <summary>
+        /// Le filtre « Univers » du noeud 1 compare PacketSnapshot.Universe au
+        /// numero saisi : ce test verrouille le fait que l'univers eHuB emis est
+        /// bien celui restitue par le recepteur (sinon le filtre ne matche jamais).
+        /// </summary>
+        [Theory]
+        [InlineData((byte)0)]
+        [InlineData((byte)1)]
+        [InlineData((byte)7)]
+        public void ReceivedPacketKeepsEmittedUniverse(byte universe)
+        {
+            using var receiver = new EhubReceiver(port: 0);
+
+            var ids = new List<int> { 1, 2, 3 };
+            var source = new State(ids);
+            foreach (int id in ids) source.SetRgb(id, 10, 20, 30);
+
+            byte[] packet = Ehub.EncodeUpdate(universe, ids, source);
+            using (var udp = new UdpClient())
+                udp.Send(packet, packet.Length, new IPEndPoint(IPAddress.Loopback, receiver.Port));
+
+            var deadline = System.DateTime.UtcNow.AddSeconds(2);
+            while (receiver.PacketsReceived == 0 && System.DateTime.UtcNow < deadline)
+                Thread.Sleep(10);
+
+            var snapshots = receiver.SnapshotPackets();
+            Assert.NotEmpty(snapshots);
+            Assert.Equal(universe, snapshots[snapshots.Count - 1].Universe);
+        }
+
         [Fact]
         public void EmittedFrameIsReceivedWithCorrectColors()
         {

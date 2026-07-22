@@ -77,15 +77,31 @@
       <!-- ============ ONGLET 2 : DEBOGAGE ============ -->
       <TabItem Header="Débogage">
         <DockPanel Background="#141418">
-          <TextBlock DockPanel.Dock="Top" Margin="14,10,14,0"
-                     Text="Lis les nœuds de GAUCHE à DROITE : le 1er moniteur faux = l'étape qui bugue."
-                     TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
+          <StackPanel DockPanel.Dock="Top" Margin="14,10,14,0" Spacing="6">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <TextBlock Text="MODE" VerticalAlignment="Center" FontWeight="Bold" Foreground="#8ab4f8"/>
+              <RadioButton x:Name="ModeObserveRadio" GroupName="DebugMode" IsChecked="True"
+                           Content="🔍 Observation (passif)"/>
+              <RadioButton x:Name="ModeTestRadio" GroupName="DebugMode"
+                           Content="🧪 Test (émission)"/>
+            </StackPanel>
+            <Border x:Name="EmitWarning" Background="#5a1a1a" BorderBrush="#a33"
+                    BorderThickness="1" CornerRadius="4" Padding="6" IsVisible="False">
+              <TextBlock Text="⚠️ ÉMISSION ACTIVE — cet outil peut envoyer sur le réseau et perturber le système en production."
+                         TextWrapping="Wrap" Foreground="#ffd7d7" FontSize="11"/>
+            </Border>
+            <TextBlock Text="Lis les nœuds de GAUCHE à DROITE : le 1er moniteur faux = l'étape qui bugue."
+                       TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
+          </StackPanel>
           <ScrollViewer x:Name="DebugScrollViewer" HorizontalScrollBarVisibility="Auto"
                         VerticalScrollBarVisibility="Auto">
             <StackPanel Orientation="Horizontal" Spacing="10" Margin="14" VerticalAlignment="Top">
 
             <!-- ═══ Simulation UDP (source de test = faux Unity) ═══ -->
-            <Border Background="#1d1d24" BorderBrush="#3a3a44" BorderThickness="1"
+            <!-- Masquée en mode Observation : on n'injecte pas de faux signal
+                 quand on observe le vrai système. -->
+            <Border x:Name="SimulationCard"
+                    Background="#1d1d24" BorderBrush="#3a3a44" BorderThickness="1"
                     CornerRadius="6" Padding="8" Width="250" VerticalAlignment="Top">
               <StackPanel Spacing="6">
                 <TextBlock Text="Simulation UDP (faux Unity)" FontWeight="Bold" Foreground="#e0e0e0"/>
@@ -132,9 +148,10 @@
                            TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
               </StackPanel>
             </Border>
-            <TextBlock Text="→" VerticalAlignment="Center" Foreground="#666" FontSize="18"/>
+            <TextBlock x:Name="SimulationArrow" Text="→" VerticalAlignment="Center"
+                       Foreground="#666" FontSize="18"/>
 
-            <!-- ═══ Étape ① : Réception UDP ═══ -->
+            <!-- ═══ Étape ①: Réception UDP ═══ -->
             <Border Background="#202028" BorderBrush="#3a3a44" BorderThickness="1"
                     CornerRadius="6" Padding="8" Width="250" VerticalAlignment="Top">
               <StackPanel Spacing="6">
@@ -209,9 +226,32 @@
                   <TextBlock Text="IP" VerticalAlignment="Center" Foreground="#bbb" Width="52"/>
                   <TextBox x:Name="TestIpBox" Watermark="ex : 10.0.0.1" Width="150"/>
                 </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Port" VerticalAlignment="Center" Foreground="#bbb" Width="52"/>
+                  <TextBox x:Name="TestPortBox" Text="6454" Width="70"/>
+                </StackPanel>
+                <!-- Univers ArtNet reellement alimentes par le paquet eHuB observe :
+                     c'est le lien entre ce qu'on RECOIT (①) et ce qui PARTIRAIT (④). -->
+                <TextBlock x:Name="Node4Feeds" Text="" TextWrapping="Wrap"
+                           Foreground="#e0b060" FontSize="11"/>
                 <TextBlock x:Name="Node4Hint" Text="" Foreground="#8ab4f8" FontSize="11"/>
-                <TextBlock Text="IP pré-remplie depuis la config (univers → contrôleur), modifiable. La trame part vers cette IP."
-                           TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
+                <!-- Texte pilote par ApplyDebugMode : le nœud ④ est une CONSULTATION
+                     en Observation et une COMMANDE en Test. Sans ce libellé, les deux
+                     champs se ressemblent et on ne sait pas lequel agit sur le réseau. -->
+                <TextBlock x:Name="Node4Role" Text="" TextWrapping="Wrap"
+                           Foreground="#888" FontSize="11"/>
+
+                <!-- En-tete ArtNet reel : c'est CE que le nœud ④ ajoute par rapport
+                     au ③. Les 18 octets sont construits par ArtNetSender.BuildPacket,
+                     donc ce qui est affiche est exactement ce qui partira. -->
+                <TextBlock Text="En-tête ArtNet (18 octets) :" Foreground="#bbb" FontSize="11"/>
+                <Border Background="#000" Padding="6" CornerRadius="3">
+                  <TextBlock x:Name="ArtHeaderText" Text="—" TextWrapping="Wrap"
+                             FontFamily="Consolas, Cascadia Mono, monospace"
+                             FontSize="11" Foreground="#9ad19a"/>
+                </Border>
+
+                <TextBlock Text="Données DMX (octets 18+) :" Foreground="#bbb" FontSize="11"/>
                 <Border Background="#000" Padding="4" CornerRadius="3">
                   <WrapPanel x:Name="ArtNetMonitor" Width="224"/>
                 </Border>
@@ -221,31 +261,6 @@
                   <Button x:Name="TestBlackBtn" Content="BLACK" Width="60"/>
                   <Button x:Name="StreamBtn" Content="▶ Continu"/>
                 </StackPanel>
-              </StackPanel>
-            </Border>
-            <TextBlock Text="→" VerticalAlignment="Center" Foreground="#666" FontSize="18"/>
-
-            <!-- ═══ ⑤ Moniteur ArtNet (réseau) ═══ -->
-            <Border Background="#202028" BorderBrush="#3a3a44" BorderThickness="1"
-                    CornerRadius="6" Padding="8" Width="250" VerticalAlignment="Top">
-              <StackPanel Spacing="6">
-                <TextBlock Text="⑤ Moniteur ArtNet (réseau)" FontWeight="Bold" Foreground="#e0e0e0"/>
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                  <TextBlock Text="Port" VerticalAlignment="Center" Foreground="#bbb"/>
-                  <TextBox x:Name="ArtPortBox" Text="6454" Width="70"/>
-                  <Button x:Name="ArtListenBtn" Content="▶ Écouter"/>
-                </StackPanel>
-                <TextBlock x:Name="ArtRxInfo" Text="—" TextWrapping="Wrap"
-                           Foreground="#888" FontSize="11"/>
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                  <TextBlock Text="Voir univers" VerticalAlignment="Center" Foreground="#bbb"/>
-                  <TextBox x:Name="ArtViewUniverseBox" Text="0" Width="60"/>
-                </StackPanel>
-                <TextBlock Text="DMX reçu sur le réseau pour cet univers :"
-                           TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
-                <Border Background="#000" Padding="4" CornerRadius="3">
-                  <WrapPanel x:Name="ArtDmxMonitor" Width="224"/>
-                </Border>
               </StackPanel>
             </Border>
 
