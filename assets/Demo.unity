@@ -119,6 +119,55 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1 &183926708
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 183926710}
+  - component: {fileID: 183926709}
+  m_Layer: 0
+  m_Name: VideoShow
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &183926709
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 183926708}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 02a7b75b3ee0f41f296ad3f5f47a8761, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::VideoShowDirector
+  resolution: 128
+  gain: 255
+  bandGain: 320
+  seed: -1
+  spinScale: 1
+--- !u!4 &183926710
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 183926708}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &455591433
 GameObject:
   m_ObjectHideFlags: 0
@@ -1538,7 +1587,7 @@ PlayableDirector:
   m_GameObject: {fileID: 1728797087}
   m_Enabled: 1
   serializedVersion: 3
-  m_PlayableAsset: {fileID: 11400000, guid: 22848431d8fee4a5981902310ea293d4, type: 2}
+  m_PlayableAsset: {fileID: 11400000, guid: 45fd0875f8a514113b92fd1da0195ad7, type: 2}
   m_InitialState: 1
   m_WrapMode: 2
   m_DirectorUpdateMode: 1
@@ -1816,3 +1865,4 @@ SceneRoots:
   - {fileID: 1678865360}
   - {fileID: 2014907124}
   - {fileID: 1728797088}
+  - {fileID: 183926710}
