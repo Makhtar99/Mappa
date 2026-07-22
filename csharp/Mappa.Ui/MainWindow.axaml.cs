@@ -624,7 +624,7 @@ namespace Mappa.Ui
             // du paquet (en-tête + IP résolue). En Observation rien ne part, donc
             // le modifier est sans effet sur le système observé.
             Node4Role.Text = test
-                ? "Univers + IP + port = destination réelle. Un envoi allume la sortie correspondante."
+                ? "Univers + IP + port = destination réelle, à saisir toi-même. Un envoi allume la sortie correspondante."
                 : "Aperçu seul : change l'univers pour voir le paquet qui partirait. Rien n'est émis.";
 
             if (!test)
@@ -711,22 +711,19 @@ namespace Mappa.Ui
         {
             if (!int.TryParse(TestUniverseBox.Text, out int uni) || _config == null)
             {
-                Node4Hint.Text = _config == null ? "(charge une config pour l'IP auto)" : "";
+                Node4Hint.Text = _config == null ? "(charge une config pour l'info de routage)" : "";
+                RefreshArtHeader();
                 return;
             }
             var res = ResolveController(uni);
             if (res.HasValue)
             {
-                TestIpBox.Text = res.Value.ip;                       // pré-remplit (modifiable)
-                TestPortBox.Text = res.Value.port.ToString();
-                // On montre la traduction quand les deux numéros diffèrent : c'est
-                // l'étape que le routage fait en silence et qu'aucun autre nœud n'expose.
+                // Information seule : on n'écrit RIEN dans les champs IP et Port.
+                // C'est l'utilisateur qui choisit sa cible ; la config se contente
+                // de lui dire ce qu'elle sait de cet univers.
                 string head = res.Value.local == uni
-                    ? $"→ {res.Value.id} · univers ArtNet {res.Value.local}"
-                    : $"→ {res.Value.id} · index global {uni} → univers ArtNet {res.Value.local}";
-                // On indique aussi QUELLES entités la config pose sur cet univers :
-                // c'est le chaînon manquant entre le numéro d'univers (④) et les
-                // LEDs inspectées (②), que rien ne reliait jusqu'ici.
+                    ? $"→ {res.Value.id} · {res.Value.ip} · univers ArtNet {res.Value.local}"
+                    : $"→ {res.Value.id} · {res.Value.ip} · index global {uni} → univers ArtNet {res.Value.local}";
                 var range = EntityRangeFor(uni);
                 Node4Hint.Text = range.HasValue
                     ? $"{head}\nporte les entités {range.Value.first}–{range.Value.last}"
@@ -734,9 +731,6 @@ namespace Mappa.Ui
             }
             else
             {
-                // Pas de contrôleur pour cet univers : on n'affiche pas une IP
-                // périmée qui ferait croire à une cible valide.
-                TestIpBox.Text = "";
                 Node4Hint.Text = "⚠ univers non routé dans la config";
             }
             RefreshArtHeader();
