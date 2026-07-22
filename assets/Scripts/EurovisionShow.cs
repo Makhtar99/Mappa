@@ -123,7 +123,7 @@ public sealed class EurovisionShow : MonoBehaviour
 
         _projector = dev.AddComponent<ProjectorController>();
         _projector.emitter = emitter;
-        _projector.entityId = 20000;
+        _projector.baseEntityId = 20000;
         _projector.color = new Color(0.85f, 0f, 0.17f);
 
         _lyres = new LyreController[lyreCount];
