@@ -31,7 +31,7 @@ case "$APPAREIL" in
   *) echo "Appareil inconnu: $APPAREIL (lyre1|lyre2|lyre3|lyre4)"; exit 1 ;;
 esac
 
-MAX=14
+MAX=13
 
 echo "======================================================================"
 echo "  Sweep ROTATION : $NAME ($MAX canaux DMX)"

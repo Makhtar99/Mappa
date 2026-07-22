@@ -22,7 +22,7 @@
 #   Ex: ./scripts/dmx_probe.sh lyre1 6 255   # canal 6 de Lyre 1 a fond
 #   Ex: ./scripts/dmx_probe.sh proj 1 255    # canal 1 du projecteur a fond
 #
-# Astuce cartographie: lance en boucle sur les 14 canaux d'une lyre pour voir
+# Astuce cartographie: lance en boucle sur les 13 canaux d'une lyre pour voir
 # lequel fait quoi. Utilise ./scripts/dmx_sweep.sh pour l'auto-cartographie.
 
 set -eu
@@ -49,10 +49,10 @@ CONFIG="${CONFIG:-configs/ecran.json}"
 # Mapping appareil -> base entity ID (voir ecran.json)
 case "$APPAREIL" in
   proj|projector|projo) BASE=1;  MAX=1;  NAME="Projecteur" ;;
-  lyre1)                BASE=10; MAX=14; NAME="Lyre 1" ;;
-  lyre2)                BASE=30; MAX=14; NAME="Lyre 2" ;;
-  lyre3)                BASE=50; MAX=14; NAME="Lyre 3" ;;
-  lyre4)                BASE=70; MAX=14; NAME="Lyre 4" ;;
+  lyre1)                BASE=10; MAX=13; NAME="Lyre 1" ;;
+  lyre2)                BASE=30; MAX=13; NAME="Lyre 2" ;;
+  lyre3)                BASE=50; MAX=13; NAME="Lyre 3" ;;
+  lyre4)                BASE=70; MAX=13; NAME="Lyre 4" ;;
   *) echo "Appareil inconnu: $APPAREIL"; exit 1 ;;
 esac
 

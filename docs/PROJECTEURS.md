@@ -5,26 +5,29 @@ Univers ArtNet : **33** sur `192.168.1.48` (contrôleur ctrl-4).
 ## 1. Etat du code apres correction
 
 - Convention : **1 canal DMX = 1 entite eHuB** (`LedType.RAW1` cote config).
-- `LyreController` emet 14 entites (canaux DMX 1 a 14 relatif au canal de base
-  de la lyre), conformement a l'Excel eHuB. Ordre par defaut : `pan16, tilt16,
-  speed, dimmer, strobe, R, G, B, W, macro, auto, reset`. Modifiable dans le
-  script si le profil DMX reel est different.
-- `ProjectorController` emet `channelCount` entites (par defaut 1 = mono-canal
-  dimmer, coherent avec l'Excel `Entity Start=1, End=1`). Monter a 3 pour du
-  RGB pur ou 5 pour dimmer+RGBW si le profil reel est different.
+- Source du mapping : la doc officielle
+  [glassworks.tech/led/arch/other-devices](https://learn.glassworks.tech/led/arch/other-devices)
+  qui donne explicitement les canaux DMX pour projo et lyres.
+- `ProjectorController` emet 4 entites (R, V, B, W) sur canaux DMX 1..4.
+  `baseEntityId = 1` par defaut.
+- `LyreController` emet 13 entites (13 canaux DMX). Ordre par defaut :
+  `pan16, tilt16, speed, dimmer, strobe, R, G, B, W, macro, auto/reset`.
+  Modifiable dans le script si le profil DMX reel est different.
 - `configs/ecran.json` mappe les entites en `led_type: "RAW1"` :
 
-  | Appareil  | Entites Unity | Canaux DMX (univ 33) |
-  |-----------|---------------|----------------------|
-  | Projector | 1             | 169                  |
-  | Lyre 1    | 10 .. 23      | 1 .. 14              |
-  | Lyre 2    | 30 .. 43      | 43 .. 56             |
-  | Lyre 3    | 50 .. 63      | 85 .. 98             |
-  | Lyre 4    | 70 .. 83      | 127 .. 140           |
+  | Appareil  | Entites eHuB | Canaux DMX (univ 33) |
+  |-----------|--------------|----------------------|
+  | Projector | 1 .. 4       | 1 .. 4               |
+  | Lyre 1    | 10 .. 22     | 10 .. 22             |
+  | Lyre 2    | 30 .. 42     | 30 .. 42             |
+  | Lyre 3    | 50 .. 62     | 50 .. 62             |
+  | Lyre 4    | 70 .. 82     | 70 .. 82             |
 
-  Source : `Ecran.xlsx` feuille `eHuB` (5 dernieres lignes), qui indique
-  explicitement 14 entites par lyre (`Entity Start=10, Entity End=23` etc.) et
-  1 entite pour le projecteur.
+  ID d'entite eHuB = canal DMX. Simple.
+
+  **Adresses DMX physiques a regler sur les appareils** (LCD/dip switches) :
+  Projo = **001**, Lyre 1 = **010**, Lyre 2 = **030**, Lyre 3 = **050**,
+  Lyre 4 = **070**.
 
   (Rappel : dans les fichiers, `channel_start` est **0-indexe** ; les tableaux
   ci-dessus utilisent la numerotation DMX **1-indexee**.)
@@ -117,12 +120,11 @@ dimmer, rien ne s'allume, meme avec des couleurs vives. C'est normal.
 - `csharp/Mappa/RoutingPlan.cs` : gestion du cas 1 canal dans `Render()`.
 - `configs/ecran.json` : 5 lignes appareils passees en `RAW1` avec une entite
   par canal DMX.
-- `assets/Scripts/LyreController.cs` : emet 1 canal par entite (14 canaux,
-  conforme a l'Excel).
-- `assets/Scripts/ProjectorController.cs` : emet `channelCount` canaux par
-  entite (defaut 5), renomme `entityId` -> `baseEntityId`.
-- `assets/Demo.unity` : `Projector` prend `baseEntityId: 1`, `channelCount: 1`
-  (mono-canal, conforme a l'Excel `Entity Start=1, End=1`).
+- `assets/Scripts/LyreController.cs` : emet 1 canal par entite (13 canaux,
+  conforme a la doc glassworks/other-devices).
+- `assets/Scripts/ProjectorController.cs` : emet 4 canaux R/V/B/W
+  (`baseEntityId: 1`, ChannelCount fixe a 4).
+- `assets/Demo.unity` : `Projector` prend `baseEntityId: 1`.
 
 ## 6. Tests de non-regression (mur LED)
 
@@ -257,9 +259,9 @@ _ch[8]  = (byte)(speed * 255f);    // canal 9 : speed
 _ch[9]  = 0; _ch[10] = 0; _ch[11] = 0; _ch[12] = 0; _ch[13] = 0;
 ```
 
-**Profil B - Pan/Tilt 16 bits, dimmer en milieu (defaut, 14 canaux)**
+**Profil B - Pan/Tilt 16 bits, dimmer en milieu (defaut, 13 canaux)**
 Ordre par defaut du script actuel (deja code) : pan_H, pan_L, tilt_H, tilt_L,
-speed, dimmer, strobe, R, G, B, W, macro, auto, reset.
+speed, dimmer, strobe, R, G, B, W, macro, auto/reset.
 
 **Profil C - RGB simple sans mouvement (barres LED type)**
 ```csharp
@@ -268,11 +270,11 @@ _ch[1] = (byte)(color.g * dimmer * 255f);
 _ch[2] = (byte)(color.b * dimmer * 255f);
 _ch[3] = (byte)(white * 255f);
 _ch[4] = (byte)(strobe * 255f);
-for (int i = 5; i < 14; i++) _ch[i] = 0;
+for (int i = 5; i < 13; i++) _ch[i] = 0;
 ```
 
-Astuce : garde toujours 14 lignes `_ch[0..13]` (le tableau reste dimensionne
-a 14), et laisse a `0` les canaux inutilises. Pas besoin de recompiler la
+Astuce : garde toujours 13 lignes `_ch[0..12]` (le tableau reste dimensionne
+a 13), et laisse a `0` les canaux inutilises. Pas besoin de recompiler la
 config C# ni d'ajuster `ecran.json` : tu ne changes que l'ordre des octets
 emis, le routing suit.
 
@@ -341,8 +343,8 @@ Pour basculer une lyre :
 5. Modifie `configs/ecran.json` : pour cette lyre, remplace `entity_end` par
    `baseEntityId + 8` (ex: Lyre 1 -> `entity_end: 18` au lieu de `22`).
 
-Le routing C# passe automatiquement de 14 canaux a 9 pour cette lyre. Les
-autres restent en 14 canaux si tu ne les modifies pas.
+Le routing C# passe automatiquement de 13 canaux a 9 pour cette lyre. Les
+autres restent en 13 canaux si tu ne les modifies pas.
 
 **Etape 5 : bouger depuis Unity**
 

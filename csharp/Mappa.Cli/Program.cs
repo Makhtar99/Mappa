@@ -41,6 +41,7 @@ internal static class Program
             case "image" when args.Length >= 2: return ImageCmd(args);
             case "import" when args.Length >= 2: return Import(args);
             case "ramp" when args.Length >= 2: return Ramp(args);
+            case "preset" when args.Length >= 2: return Preset(args);
             default: PrintUsage(); return 1;
         }
     }
@@ -177,7 +178,7 @@ internal static class Program
             config.Devices.Add(new Device
             {
                 Id = $"lyre-{i + 1}", Type = "lyre", Universe = baseUniverse,
-                ChannelStart = starts[i], ChannelCount = 14,
+                ChannelStart = starts[i], ChannelCount = 13,
             });
         }
     }
@@ -449,6 +450,7 @@ internal static class Program
         string ip = "255.255.255.255";
         bool alsoBroadcast = false;
         int universes = 16;
+        int startUniverse = 0;
         byte r = 255, g = 255, b = 255;
         int holdSec = 5;
         bool step = false;
@@ -461,6 +463,11 @@ internal static class Program
                 case "--ip" when i + 1 < args.Length: ip = args[++i]; break;
                 case "--broadcast": alsoBroadcast = true; break;
                 case "--universes" when i + 1 < args.Length: universes = int.Parse(args[++i]); break;
+                case "--start" when i + 1 < args.Length: startUniverse = int.Parse(args[++i]); break;
+                case "--only" when i + 1 < args.Length:
+                    startUniverse = int.Parse(args[++i]);
+                    universes = startUniverse + 1;
+                    break;
                 case "--hold" when i + 1 < args.Length: holdSec = int.Parse(args[++i]); break;
                 case "--port" when i + 1 < args.Length: port = int.Parse(args[++i]); break;
                 case "--step": step = true; break;
@@ -494,7 +501,7 @@ internal static class Program
 
         Console.WriteLine($"SCAN diagnostic");
         Console.WriteLine($"  Cibles   : {string.Join(", ", targets)} : {port}");
-        Console.WriteLine($"  Univers  : 0..{universes - 1}");
+        Console.WriteLine($"  Univers  : {startUniverse}..{universes - 1}");
         Console.WriteLine($"  Couleur  : RVB=({r},{g},{b}) sur tous les canaux");
         Console.WriteLine($"  Mode     : {(step ? "pas-a-pas" : "tous en meme temps")}, {holdSec}s");
         Console.WriteLine();
@@ -510,7 +517,7 @@ internal static class Program
 
         if (step)
         {
-            for (int u = 0; u < universes && running; u++)
+            for (int u = startUniverse; u < universes && running; u++)
             {
                 Console.WriteLine($"  -> univers {u} (Ctrl+C pour arreter)");
                 var until = DateTime.UtcNow.AddSeconds(holdSec);
@@ -527,18 +534,18 @@ internal static class Program
             int frames = 0;
             while (running && DateTime.UtcNow < until)
             {
-                for (int u = 0; u < universes; u++) Blast(u);
+                for (int u = startUniverse; u < universes; u++) Blast(u);
                 frames++;
                 System.Threading.Thread.Sleep(25);
             }
-            Console.WriteLine($"  {frames} salves envoyees sur {universes} univers.");
+            Console.WriteLine($"  {frames} salves envoyees sur univers {startUniverse}..{universes - 1}.");
         }
 
         // Extinction.
         var black = new byte[Config.DmxChannelsPerUniverse];
         for (int rep = 0; rep < 3; rep++)
         {
-            for (int u = 0; u < universes; u++)
+            for (int u = startUniverse; u < universes; u++)
                 foreach (var t in targets) sender.Send(t, u, black, port);
             System.Threading.Thread.Sleep(25);
         }
@@ -1086,6 +1093,108 @@ internal static class Program
             System.Threading.Thread.Sleep(periodMs);
         }
         Console.WriteLine("Termine. Canal remis a zero.");
+        return 0;
+    }
+
+    // ------------------------------------------------------------------ //
+    // preset : allume simultanement plusieurs entites avec des valeurs
+    // differentes, en boucle a 40 Hz. Utile pour poser une "pose" (lyre
+    // dirigee vers le ciel + dimmer + couleur) sans que chaque canal ne
+    // s'ecrase mutuellement.
+    //
+    // Usage :
+    //   mappa preset <config.json> --ip <IP> --set <e=v[,e=v,...]> [--hold <sec>]
+    //
+    // Exemple : Lyre 1 vers le ciel, blanc, dimmer 100% + projo blanc pendant 8s :
+    //   mappa preset configs/ecran.json --ip 192.168.1.48 --hold 8 \
+    //     --set 1=255,2=255,3=255,\
+    //           10=128,11=0,12=255,13=255,14=128,15=255,17=255,18=255,19=255
+    // ------------------------------------------------------------------ //
+    private static int Preset(string[] args)
+    {
+        string configPath = args[1];
+        string? overrideIp = null;
+        double holdSec = 5.0;
+        int hz = 40;
+        var pairs = new List<(int Entity, byte Value)>();
+
+        for (int i = 2; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--ip" when i + 1 < args.Length: overrideIp = args[++i]; break;
+                case "--hold" when i + 1 < args.Length:
+                    holdSec = double.Parse(args[++i], System.Globalization.CultureInfo.InvariantCulture);
+                    break;
+                case "--hz" when i + 1 < args.Length: hz = int.Parse(args[++i]); break;
+                case "--set" when i + 1 < args.Length:
+                    foreach (var chunk in args[++i].Split(','))
+                    {
+                        var kv = chunk.Split('=');
+                        if (kv.Length != 2 || !int.TryParse(kv[0], out int eid) || !byte.TryParse(kv[1], out byte val))
+                        {
+                            Console.Error.WriteLine($"--set attend 'e=v,e=v,...' (ex: 15=255,10=128). Erreur sur '{chunk}'");
+                            return 1;
+                        }
+                        pairs.Add((eid, val));
+                    }
+                    break;
+                default: Console.Error.WriteLine($"Option inconnue : {args[i]}"); return 1;
+            }
+        }
+
+        if (pairs.Count == 0)
+        {
+            Console.Error.WriteLine("--set <entity=value,...> obligatoire.");
+            return 1;
+        }
+
+        var config = LoadConfigWithIp(configPath, overrideIp);
+        if (config == null) return 1;
+        var plan = new RoutingPlan(config);
+        var state = State.FromConfig(config);
+
+        foreach (var (eid, val) in pairs)
+        {
+            if (!state.Contains(eid))
+            {
+                Console.Error.WriteLine($"Entite {eid} absente de la config.");
+                return 1;
+            }
+            state.Set(eid, val, 0, 0);
+        }
+        state.MarkUpdated();
+
+        Console.WriteLine($"Preset : {pairs.Count} canaux poses simultanement.");
+        foreach (var (eid, val) in pairs)
+        {
+            var addr = plan.AddressOf(eid);
+            if (addr.HasValue)
+                Console.WriteLine($"  entite {eid,4} = {val,3}  -> univers {addr.Value.Universe}, canal DMX {addr.Value.Channel + 1}");
+        }
+        Console.WriteLine($"Envoi a {hz} Hz pendant {holdSec:F1}s (Ctrl+C pour arreter).");
+
+        int periodMs = hz > 0 ? Math.Max(1, 1000 / hz) : 25;
+        int totalFrames = (int)(holdSec * hz);
+        bool running = true;
+        Console.CancelKeyPress += (_, e) => { e.Cancel = true; running = false; };
+
+        using var sender = new ArtNetSender();
+        for (int f = 0; f < totalFrames && running; f++)
+        {
+            sender.SendPlan(config, plan.Render(state));
+            System.Threading.Thread.Sleep(periodMs);
+        }
+
+        // Extinction propre.
+        state.Clear();
+        state.MarkUpdated();
+        for (int i = 0; i < 3; i++)
+        {
+            sender.SendPlan(config, plan.Render(state));
+            System.Threading.Thread.Sleep(periodMs);
+        }
+        Console.WriteLine("Termine. Canaux remis a zero.");
         return 0;
     }
 

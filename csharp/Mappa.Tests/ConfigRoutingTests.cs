@@ -122,12 +122,13 @@ namespace Mappa.Tests
         public void EcranJsonRoutesLyresAndProjectorCorrectly()
         {
             // Non-regression bout-en-bout sur la vraie config utilisee demain.
-            // On charge configs/ecran.json et on valide que :
-            //   - Lyre 1 a bien 14 entites (10..23) mappees canaux DMX 1..14.
-            //   - Lyre 4 a bien 14 entites (70..83) mappees canaux DMX 127..140.
-            //   - Projector = 1 entite (id 1) sur canal DMX 169.
-            //   - Toutes sont sur l'univers ArtNet 33 (mappe via universe.index 135).
-            //   - La couleur ecrite par LyreController arrive au bon octet DMX.
+            // Mapping officiel (source : learn.glassworks.tech/led/arch/other-devices) :
+            //   - Projector : entites 1..4    -> canaux DMX 1..4   (offset 0..3)    R,V,B,W
+            //   - Lyre 1    : entites 10..22  -> canaux DMX 10..22 (offset 9..21)   13 canaux
+            //   - Lyre 2    : entites 30..42  -> canaux DMX 30..42 (offset 29..41)
+            //   - Lyre 3    : entites 50..62  -> canaux DMX 50..62 (offset 49..61)
+            //   - Lyre 4    : entites 70..82  -> canaux DMX 70..82 (offset 69..81)
+            //   - Toutes sur l'univers ArtNet 33 (mappe via universe.index 135).
             string repoRoot = Path.GetFullPath(Path.Combine(
                 Path.GetDirectoryName(typeof(ConfigRoutingTests).Assembly.Location)!,
                 "..", "..", "..", "..", ".."));
@@ -136,64 +137,71 @@ namespace Mappa.Tests
             var cfg = Persistence.LoadConfig(cfgPath);
             var plan = new RoutingPlan(cfg);
 
-            // Lyre 1 : entites 10..23, canal_start=0, univers 135
-            var l1c1 = plan.AddressOf(10)!.Value;    // canal DMX 1 = offset 0
-            var l1c14 = plan.AddressOf(23)!.Value;   // canal DMX 14 = offset 13
+            // Projector : entites 1..4 -> canaux DMX 1..4 (offsets 0..3)
+            var projR = plan.AddressOf(1)!.Value;
+            var projW = plan.AddressOf(4)!.Value;
+            Assert.Equal(135, projR.Universe);
+            Assert.Equal(0, projR.Channel);
+            Assert.Equal(3, projW.Channel);
+            Assert.Equal(1, projR.Channels); // RAW1
+
+            // Lyre 1 : entites 10..22 -> canaux DMX 10..22 (offsets 9..21)
+            var l1c1 = plan.AddressOf(10)!.Value;
+            var l1c13 = plan.AddressOf(22)!.Value;
             Assert.Equal(135, l1c1.Universe);
-            Assert.Equal(0, l1c1.Channel);
+            Assert.Equal(9, l1c1.Channel);
             Assert.Equal(1, l1c1.Channels); // RAW1
-            Assert.Equal(13, l1c14.Channel);
+            Assert.Equal(21, l1c13.Channel);
 
-            // Lyre 4 : entites 70..83, canal_start=126
+            // Lyre 4 : entites 70..82 -> canaux DMX 70..82 (offsets 69..81)
             var l4c1 = plan.AddressOf(70)!.Value;
-            var l4c14 = plan.AddressOf(83)!.Value;
-            Assert.Equal(126, l4c1.Channel);
-            Assert.Equal(139, l4c14.Channel);
-
-            // Projector : entite 1, canal_start=168
-            var proj = plan.AddressOf(1)!.Value;
-            Assert.Equal(168, proj.Channel);
-            Assert.Equal(1, proj.Channels);
+            var l4c13 = plan.AddressOf(82)!.Value;
+            Assert.Equal(69, l4c1.Channel);
+            Assert.Equal(81, l4c13.Channel);
 
             // Simulation du LyreController : pan=0.5, tilt=0.5 en 16 bits =>
             // pan_hi = 0x7F (127), pan_lo = 0xFF (255) sur les 2 premiers canaux.
             // On reproduit ici la meme sequence d'ecriture que LyreController.cs.
+            // Lyre 1 debut = offset 9 (canal DMX 10).
             var state = State.FromConfig(cfg);
             const int baseId = 10; // Lyre 1
             int pan16 = (int)(0.5f * 65535f);
             int tilt16 = (int)(0.5f * 65535f);
-            state.Set(baseId + 0, (byte)(pan16 >> 8), 0, 0);        // canal 1 : pan_hi
-            state.Set(baseId + 1, (byte)(pan16 & 0xFF), 0, 0);      // canal 2 : pan_lo
-            state.Set(baseId + 2, (byte)(tilt16 >> 8), 0, 0);       // canal 3 : tilt_hi
-            state.Set(baseId + 3, (byte)(tilt16 & 0xFF), 0, 0);     // canal 4 : tilt_lo
-            state.Set(baseId + 5, 255, 0, 0);                       // canal 6 : dimmer=100%
-            state.Set(baseId + 7, 200, 0, 0);                       // canal 8 : R=200
-            state.Set(baseId + 8, 100, 0, 0);                       // canal 9 : G=100
+            state.Set(baseId + 0, (byte)(pan16 >> 8), 0, 0);        // canal 1  : pan_hi
+            state.Set(baseId + 1, (byte)(pan16 & 0xFF), 0, 0);      // canal 2  : pan_lo
+            state.Set(baseId + 2, (byte)(tilt16 >> 8), 0, 0);       // canal 3  : tilt_hi
+            state.Set(baseId + 3, (byte)(tilt16 & 0xFF), 0, 0);     // canal 4  : tilt_lo
+            state.Set(baseId + 5, 255, 0, 0);                       // canal 6  : dimmer=100%
+            state.Set(baseId + 7, 200, 0, 0);                       // canal 8  : R=200
+            state.Set(baseId + 8, 100, 0, 0);                       // canal 9  : G=100
             state.Set(baseId + 9, 50,  0, 0);                       // canal 10 : B=50
-            state.Set(baseId + 13, 42, 0, 0);                       // canal 14 : reset=42
+            state.Set(baseId + 12, 42, 0, 0);                       // canal 13 : auto/reset=42
             var packets = plan.Render(state);
             var univ33 = packets[135];
 
-            // Verifications finales des octets DMX sortants (canal DMX N -> pkt[N-1]).
-            Assert.Equal(0x7F, univ33[0]);   // pan_hi
-            Assert.Equal(0xFF, univ33[1]);   // pan_lo
-            Assert.Equal(0x7F, univ33[2]);   // tilt_hi
-            Assert.Equal(0xFF, univ33[3]);   // tilt_lo
-            Assert.Equal(255,  univ33[5]);   // dimmer
-            Assert.Equal(200,  univ33[7]);   // R
-            Assert.Equal(100,  univ33[8]);   // G
-            Assert.Equal(50,   univ33[9]);   // B
-            Assert.Equal(42,   univ33[13]);  // reset (14e canal)
+            // Lyre 1 commence a l'offset 9 (canal DMX 10). pan_hi -> pkt[9], etc.
+            Assert.Equal(0x7F, univ33[9]);   // pan_hi   (canal DMX 10)
+            Assert.Equal(0xFF, univ33[10]);  // pan_lo   (canal DMX 11)
+            Assert.Equal(0x7F, univ33[11]);  // tilt_hi  (canal DMX 12)
+            Assert.Equal(0xFF, univ33[12]);  // tilt_lo  (canal DMX 13)
+            Assert.Equal(255,  univ33[14]);  // dimmer   (canal DMX 15)
+            Assert.Equal(200,  univ33[16]);  // R        (canal DMX 17)
+            Assert.Equal(100,  univ33[17]);  // G        (canal DMX 18)
+            Assert.Equal(50,   univ33[18]);  // B        (canal DMX 19)
+            Assert.Equal(42,   univ33[21]);  // auto     (canal DMX 22, 13e canal)
 
-            // Lyre 2 doit commencer au canal DMX 43 (offset 42) sans collision.
+            // Lyre 2 commence a l'offset 29 (canal DMX 30). entity 30 -> pkt[29].
             state.Set(30, 111, 0, 0);
             packets = plan.Render(state);
-            Assert.Equal(111, packets[135][42]);
+            Assert.Equal(111, packets[135][29]);
 
-            // Projecteur : canal DMX 169 (offset 168).
+            // Projecteur : entite 1 (R) -> offset 0 (canal DMX 1).
             state.Set(1, 222, 0, 0);
+            // entite 4 (W) -> offset 3 (canal DMX 4).
+            state.Set(4, 88, 0, 0);
             packets = plan.Render(state);
-            Assert.Equal(222, packets[135][168]);
+            Assert.Equal(222, packets[135][0]);
+            Assert.Equal(88,  packets[135][3]);
 
             // Validation globale de la config (pas d'overlap/inconnu).
             Assert.Empty(cfg.Validate());

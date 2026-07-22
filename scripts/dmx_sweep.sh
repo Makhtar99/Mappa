@@ -18,10 +18,10 @@ CONFIG="${CONFIG:-configs/ecran.json}"
 
 case "$APPAREIL" in
   proj|projector|projo) BASE=1;  MAX=1;  NAME="Projecteur" ;;
-  lyre1)                BASE=10; MAX=14; NAME="Lyre 1" ;;
-  lyre2)                BASE=30; MAX=14; NAME="Lyre 2" ;;
-  lyre3)                BASE=50; MAX=14; NAME="Lyre 3" ;;
-  lyre4)                BASE=70; MAX=14; NAME="Lyre 4" ;;
+  lyre1)                BASE=10; MAX=13; NAME="Lyre 1" ;;
+  lyre2)                BASE=30; MAX=13; NAME="Lyre 2" ;;
+  lyre3)                BASE=50; MAX=13; NAME="Lyre 3" ;;
+  lyre4)                BASE=70; MAX=13; NAME="Lyre 4" ;;
   *) echo "Appareil inconnu: $APPAREIL (proj|lyre1|lyre2|lyre3|lyre4)"; exit 1 ;;
 esac
 
