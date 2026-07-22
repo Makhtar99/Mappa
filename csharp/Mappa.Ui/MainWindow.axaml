@@ -6,72 +6,289 @@
 
   <DockPanel>
 
-    <!-- Panneau de controle (gauche) -->
-    <Border DockPanel.Dock="Left" Width="310" Padding="14" Background="#1b1b1f">
-      <StackPanel Spacing="10">
-
-        <TextBlock Text="CONFIGURATION" FontWeight="Bold" Foreground="#8ab4f8"/>
-        <TextBox x:Name="ConfigPath" Watermark="chemin d'une config .json"/>
-        <Button x:Name="LoadBtn" Content="Charger un .json"
-                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
-        <Button x:Name="ImportXlsxBtn" Content="Importer un .xlsx (eHuB)…"
-                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
-
-        <Border Height="1" Background="#333" Margin="0,4"/>
-
-        <TextBlock Text="ROUTAGE" FontWeight="Bold" Foreground="#8ab4f8"/>
-        <StackPanel Orientation="Horizontal" Spacing="8">
-          <Button x:Name="StartBtn" Content="▶ Start" Width="130"
-                  HorizontalContentAlignment="Center"/>
-          <Button x:Name="StopBtn" Content="■ Stop" Width="130"
-                  HorizontalContentAlignment="Center"/>
-        </StackPanel>
-        <CheckBox x:Name="FakerChk" Content="Faker (démo arc-en-ciel)" IsChecked="True"/>
-        <StackPanel Orientation="Horizontal" Spacing="8">
-          <TextBlock Text="Intensité" VerticalAlignment="Center" Foreground="#bbb"/>
-          <Slider x:Name="BrightnessSlider" Width="150"
-                  Minimum="0" Maximum="100" Value="30" TickFrequency="10"
-                  VerticalAlignment="Center"
-                  ToolTip.Tip="Luminosité de l'arc-en-ciel (composante V du HSV)."/>
-          <TextBlock x:Name="BrightnessText" Text="30 %" VerticalAlignment="Center"
-                     Foreground="#d0d0d0" Width="42"/>
-        </StackPanel>
-        <CheckBox x:Name="EhubChk" Content="Recevoir eHuB (réseau)"/>
-        <StackPanel Orientation="Horizontal" Spacing="8">
-          <TextBlock Text="Port eHuB" VerticalAlignment="Center" Foreground="#bbb"/>
-          <TextBox x:Name="EhubPortBox" Text="8765" Width="80"/>
-        </StackPanel>
-        <CheckBox x:Name="SendChk" Content="Émettre en ArtNet (UDP réel)"/>
-        <CheckBox x:Name="BlackoutChk" Content="⬛ Noir (blackout)"
-                  ToolTip.Tip="Ignore le Faker/eHuB et émet du noir sur tous les univers."/>
-
-        <Border Height="1" Background="#333" Margin="0,4"/>
-
-        <TextBlock Text="STATISTIQUES" FontWeight="Bold" Foreground="#8ab4f8"/>
-        <TextBlock x:Name="StatsText" Text="—"
-                   FontFamily="Consolas, Cascadia Mono, monospace"
-                   Foreground="#d0d0d0"/>
-
-        <Border Height="1" Background="#333" Margin="0,4"/>
-
-        <CheckBox x:Name="WallViewChk" Content="Vue mur (géométrie réelle)" IsChecked="True"/>
-        <TextBlock x:Name="LegendText" TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
-
-      </StackPanel>
-    </Border>
-
-    <!-- Barre de statut (bas) -->
+    <!-- Barre de statut (bas) : partagee par les deux onglets -->
     <Border DockPanel.Dock="Bottom" Padding="8" Background="#141417">
       <TextBlock x:Name="StatusText" Text="Prêt — charge une config puis Start." Foreground="#bbb"/>
     </Border>
 
-    <!-- Visualiseur DMX (centre) -->
-    <ScrollViewer Background="#0a0a0c"
-                  HorizontalScrollBarVisibility="Auto"
-                  VerticalScrollBarVisibility="Auto">
-      <Image x:Name="DmxImage" Stretch="None"
-             HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8"/>
-    </ScrollViewer>
+    <!-- ================= ONGLETS EN HAUT ================= -->
+    <TabControl>
+
+      <!-- ============ ONGLET 1 : VISUALISEUR ============ -->
+      <TabItem Header="Visualiseur">
+        <DockPanel>
+
+          <!-- Panneau de controle (gauche) -->
+          <Border DockPanel.Dock="Left" Width="310" Padding="14" Background="#1b1b1f">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <StackPanel Spacing="10">
+
+                <TextBlock Text="CONFIGURATION" FontWeight="Bold" Foreground="#8ab4f8"/>
+                <TextBox x:Name="ConfigPath" Watermark="chemin d'une config .json"/>
+                <Button x:Name="LoadBtn" Content="Charger un .json"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                <Button x:Name="ImportXlsxBtn" Content="Importer un .xlsx (eHuB)…"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+
+                <Border Height="1" Background="#333" Margin="0,4"/>
+
+                <TextBlock Text="ROUTAGE" FontWeight="Bold" Foreground="#8ab4f8"/>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button x:Name="StartBtn" Content="▶ Start" Width="130"
+                          HorizontalContentAlignment="Center"/>
+                  <Button x:Name="StopBtn" Content="■ Stop" Width="130"
+                          HorizontalContentAlignment="Center"/>
+                </StackPanel>
+                <CheckBox x:Name="FakerChk" Content="Faker (démo arc-en-ciel)" IsChecked="True"/>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="Intensité" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <Slider x:Name="BrightnessSlider" Width="150"
+                          Minimum="0" Maximum="100" Value="30" TickFrequency="10"
+                          VerticalAlignment="Center"
+                          ToolTip.Tip="Luminosité de l'arc-en-ciel (composante V du HSV)."/>
+                  <TextBlock x:Name="BrightnessText" Text="30 %" VerticalAlignment="Center"
+                             Foreground="#d0d0d0" Width="42"/>
+                </StackPanel>
+                <CheckBox x:Name="EhubChk" Content="Recevoir eHuB (réseau)"/>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="Port eHuB" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="EhubPortBox" Text="8765" Width="80"/>
+                </StackPanel>
+                <CheckBox x:Name="SendChk" Content="Émettre en ArtNet (UDP réel)"/>
+                <CheckBox x:Name="BlackoutChk" Content="⬛ Noir (blackout)"
+                          ToolTip.Tip="Ignore le Faker/eHuB et émet du noir sur tous les univers."/>
+
+                <Border Height="1" Background="#333" Margin="0,4"/>
+
+                <TextBlock Text="STATISTIQUES" FontWeight="Bold" Foreground="#8ab4f8"/>
+                <TextBlock x:Name="StatsText" Text="—"
+                           FontFamily="Consolas, Cascadia Mono, monospace"
+                           Foreground="#d0d0d0"/>
+
+                <Border Height="1" Background="#333" Margin="0,4"/>
+
+                <CheckBox x:Name="WallViewChk" Content="Vue mur (géométrie réelle)" IsChecked="True"/>
+                <TextBlock x:Name="LegendText" TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
+
+              </StackPanel>
+            </ScrollViewer>
+          </Border>
+
+          <!-- Visualiseur DMX (centre) -->
+          <ScrollViewer Background="#0a0a0c"
+                        HorizontalScrollBarVisibility="Auto"
+                        VerticalScrollBarVisibility="Auto">
+            <Image x:Name="DmxImage" Stretch="None"
+                   HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8"/>
+          </ScrollViewer>
+
+        </DockPanel>
+      </TabItem>
+
+      <!-- ============ ONGLET 2 : DEBOGAGE ============ -->
+      <TabItem Header="Débogage">
+        <DockPanel Background="#141418">
+          <StackPanel DockPanel.Dock="Top" Margin="14,10,14,0" Spacing="6">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <TextBlock Text="MODE" VerticalAlignment="Center" FontWeight="Bold" Foreground="#8ab4f8"/>
+              <RadioButton x:Name="ModeObserveRadio" GroupName="DebugMode" IsChecked="True"
+                           Content="🔍 Observation (passif)"/>
+              <RadioButton x:Name="ModeTestRadio" GroupName="DebugMode"
+                           Content="🧪 Test (émission)"/>
+            </StackPanel>
+            <Border x:Name="EmitWarning" Background="#5a1a1a" BorderBrush="#a33"
+                    BorderThickness="1" CornerRadius="4" Padding="6" IsVisible="False">
+              <TextBlock Text="⚠️ ÉMISSION ACTIVE — cet outil peut envoyer sur le réseau et perturber le système en production."
+                         TextWrapping="Wrap" Foreground="#ffd7d7" FontSize="11"/>
+            </Border>
+            <TextBlock Text="Lis les nœuds de GAUCHE à DROITE : le 1er moniteur faux = l'étape qui bugue."
+                       TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
+          </StackPanel>
+          <ScrollViewer x:Name="DebugScrollViewer" HorizontalScrollBarVisibility="Auto"
+                        VerticalScrollBarVisibility="Auto">
+            <StackPanel Orientation="Horizontal" Spacing="10" Margin="14" VerticalAlignment="Top">
+
+            <!-- ═══ Simulation UDP (source de test = faux Unity) ═══ -->
+            <!-- Masquée en mode Observation : on n'injecte pas de faux signal
+                 quand on observe le vrai système. -->
+            <Border x:Name="SimulationCard"
+                    Background="#1d1d24" BorderBrush="#3a3a44" BorderThickness="1"
+                    CornerRadius="6" Padding="8" Width="250" VerticalAlignment="Top">
+              <StackPanel Spacing="6">
+                <TextBlock Text="Simulation UDP (faux Unity)" FontWeight="Bold" Foreground="#e0e0e0"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Port" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="SimPortBox" Text="8765" Width="70"/>
+                  <TextBlock Text="Univers" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="SimUniverseBox" Text="1" Width="48"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Start" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="SimStartBox" Text="1" Width="48"/>
+                  <TextBlock Text="End" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="SimEndBox" Text="10" Width="48"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="R,V,B" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="SimColorBox" Text="255,255,0" Width="120"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Motif" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <ComboBox x:Name="FakerMotifBox" SelectedIndex="0" Width="150">
+                    <ComboBoxItem>Couleur unie</ComboBoxItem>
+                    <ComboBoxItem>Chenillard</ComboBoxItem>
+                    <ComboBoxItem>Arc-en-ciel</ComboBoxItem>
+                    <ComboBoxItem>Clignotement</ComboBoxItem>
+                    <ComboBoxItem>Tout blanc</ComboBoxItem>
+                  </ComboBox>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Delay ms" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="FakerDelayBox" Text="120" Width="70"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Button x:Name="SimulateUnityBtn" Content="Envoyer 1 frame"/>
+                  <Button x:Name="AnimateBtn" Content="▶ Animer"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Burst" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="FakerBurstBox" Text="10" Width="52"/>
+                  <Button x:Name="BurstBtn" Content="Envoyer N frames"/>
+                </StackPanel>
+                <TextBlock Text="1 frame = image figée. « Animer » = envoi continu (le chenillard / l'arc-en-ciel bougent)."
+                           TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
+              </StackPanel>
+            </Border>
+            <TextBlock x:Name="SimulationArrow" Text="→" VerticalAlignment="Center"
+                       Foreground="#666" FontSize="18"/>
+
+            <!-- ═══ Étape ①: Réception UDP ═══ -->
+            <Border Background="#202028" BorderBrush="#3a3a44" BorderThickness="1"
+                    CornerRadius="6" Padding="8" Width="250" VerticalAlignment="Top">
+              <StackPanel Spacing="6">
+                <TextBlock Text="① Réception UDP" FontWeight="Bold" Foreground="#e0e0e0"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Port" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="InPortBox" Text="8765" Width="70"/>
+                  <TextBlock Text="Univers" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="UniverseFilterBox" Watermark="tous" Width="56"/>
+                </StackPanel>
+                <Button x:Name="ListenBtn" Content="▶ Écouter"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                <!-- Sur sa propre ligne et avec retour a la ligne : ce texte est
+                     multiligne (compteurs, univers recus, plage d'IDs) et debordait
+                     de la carte quand il etait pose a cote du bouton. -->
+                <TextBlock x:Name="RxInfo" Text="—" TextWrapping="Wrap"
+                           Foreground="#888" FontSize="11"/>
+              </StackPanel>
+            </Border>
+            <TextBlock Text="→" VerticalAlignment="Center" Foreground="#666" FontSize="18"/>
+
+            <!-- ═══ Étape ② : Détail paquet ═══ -->
+            <Border Background="#202028" BorderBrush="#3a3a44" BorderThickness="1"
+                    CornerRadius="6" Padding="8" Width="250" VerticalAlignment="Top">
+              <StackPanel Spacing="6">
+                <TextBlock Text="② Détail du paquet" FontWeight="Bold" Foreground="#e0e0e0"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Start" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="FilterStartBox" Text="1" Width="48"/>
+                  <TextBlock Text="End" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <TextBox x:Name="FilterEndBox" Text="10" Width="48"/>
+                </StackPanel>
+                <TextBlock Text="Start/End = plage d'IDs d'entités à inspecter."
+                           TextWrapping="Wrap" Foreground="#888" FontSize="11"/>
+                <!-- Un flux Unity tourne a ~40 Hz et alterne des paquets couvrant des
+                     plages differentes : afficher le dernier paquet fait clignoter le
+                     moniteur. Le mode cumule reconstitue l'etat courant, comme le
+                     routage. Decoche pour inspecter un paquet isole. -->
+                <CheckBox x:Name="AccumulateChk" Content="Cumuler les paquets" IsChecked="True"
+                          ToolTip.Tip="Affiche l'état courant de ces entités plutôt que le seul dernier paquet reçu."/>
+                <Border Background="#000" Padding="4" CornerRadius="3">
+                  <WrapPanel x:Name="LedMonitor"/>
+                </Border>
+              </StackPanel>
+            </Border>
+            <TextBlock Text="→" VerticalAlignment="Center" Foreground="#666" FontSize="18"/>
+
+            <!-- ═══ Étape ③ : Emitter Group → DMX ═══ -->
+            <Border Background="#202028" BorderBrush="#3a3a44" BorderThickness="1"
+                    CornerRadius="6" Padding="8" Width="250" VerticalAlignment="Top">
+              <StackPanel Spacing="6">
+                <TextBlock Text="③ Emitter Group → DMX" FontWeight="Bold" Foreground="#e0e0e0"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Format" VerticalAlignment="Center" Foreground="#bbb"/>
+                  <ComboBox x:Name="FormatBox" SelectedIndex="0" Width="120">
+                    <ComboBoxItem>RGB</ComboBoxItem>
+                    <ComboBoxItem>GRB</ComboBoxItem>
+                    <ComboBoxItem>Mono (R)</ComboBoxItem>
+                  </ComboBox>
+                </StackPanel>
+                <TextBlock Text="moniteur : nb de carrés = type de LED (RGB=3, Mono=1)"
+                           Foreground="#888" FontSize="11"/>
+                <Border Background="#000" Padding="4" CornerRadius="3">
+                  <WrapPanel x:Name="DmxMonitor"/>
+                </Border>
+              </StackPanel>
+            </Border>
+            <TextBlock Text="→" VerticalAlignment="Center" Foreground="#666" FontSize="18"/>
+
+            <!-- ═══ Étape ④ : DMX → ArtNet ═══ -->
+            <Border Background="#202028" BorderBrush="#3a3a44" BorderThickness="1"
+                    CornerRadius="6" Padding="8" Width="250" VerticalAlignment="Top">
+              <StackPanel Spacing="6">
+                <TextBlock Text="④ DMX → ArtNet" FontWeight="Bold" Foreground="#e0e0e0"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Univers" VerticalAlignment="Center" Foreground="#bbb" Width="52"/>
+                  <TextBox x:Name="TestUniverseBox" Text="0" Width="60"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="IP" VerticalAlignment="Center" Foreground="#bbb" Width="52"/>
+                  <TextBox x:Name="TestIpBox" Watermark="ex : 10.0.0.1" Width="150"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Port" VerticalAlignment="Center" Foreground="#bbb" Width="52"/>
+                  <TextBox x:Name="TestPortBox" Text="6454" Width="70"/>
+                </StackPanel>
+                <!-- Univers ArtNet reellement alimentes par le paquet eHuB observe :
+                     c'est le lien entre ce qu'on RECOIT (①) et ce qui PARTIRAIT (④). -->
+                <TextBlock x:Name="Node4Feeds" Text="" TextWrapping="Wrap"
+                           Foreground="#e0b060" FontSize="11"/>
+                <TextBlock x:Name="Node4Hint" Text="" Foreground="#8ab4f8" FontSize="11"/>
+                <!-- Texte pilote par ApplyDebugMode : le nœud ④ est une CONSULTATION
+                     en Observation et une COMMANDE en Test. Sans ce libellé, les deux
+                     champs se ressemblent et on ne sait pas lequel agit sur le réseau. -->
+                <TextBlock x:Name="Node4Role" Text="" TextWrapping="Wrap"
+                           Foreground="#888" FontSize="11"/>
+
+                <!-- En-tete ArtNet reel : c'est CE que le nœud ④ ajoute par rapport
+                     au ③. Les 18 octets sont construits par ArtNetSender.BuildPacket,
+                     donc ce qui est affiche est exactement ce qui partira. -->
+                <TextBlock Text="En-tête ArtNet (18 octets) :" Foreground="#bbb" FontSize="11"/>
+                <Border Background="#000" Padding="6" CornerRadius="3">
+                  <TextBlock x:Name="ArtHeaderText" Text="—" TextWrapping="Wrap"
+                             FontFamily="Consolas, Cascadia Mono, monospace"
+                             FontSize="11" Foreground="#9ad19a"/>
+                </Border>
+
+                <TextBlock Text="Données DMX (octets 18+) :" Foreground="#bbb" FontSize="11"/>
+                <Border Background="#000" Padding="4" CornerRadius="3">
+                  <WrapPanel x:Name="ArtNetMonitor" Width="224"/>
+                </Border>
+                <Button x:Name="SendFrameBtn" Content="Envoyer la trame"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Button x:Name="TestWhiteBtn" Content="WHITE" Width="60"/>
+                  <Button x:Name="TestBlackBtn" Content="BLACK" Width="60"/>
+                  <Button x:Name="StreamBtn" Content="▶ Continu"/>
+                </StackPanel>
+              </StackPanel>
+            </Border>
+
+            </StackPanel>
+          </ScrollViewer>
+        </DockPanel>
+      </TabItem>
+
+    </TabControl>
 
   </DockPanel>
 </Window>

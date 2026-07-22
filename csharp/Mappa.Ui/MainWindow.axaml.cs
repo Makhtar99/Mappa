@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media.Imaging;
@@ -23,9 +25,16 @@ namespace Mappa.Ui
     {
         private const int Cell = 4;        // taille d'une LED a l'ecran (px)
         private const int LedsPerRow = 170; // 512 / 3 = 170 LED RVB par univers
+        private const int MaxMonitoredLeds = 170; // plafond d'affichage du moniteur ② (1 univers RVB)
         private const int WallCell = 4;    // taille d'une LED dans la vue mur (px)
 
+        // Couleur du quadrillage des moniteurs (contour de chaque case).
+        private static readonly Avalonia.Media.IBrush GridBrush =
+            new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.FromRgb(0x55, 0x55, 0x60));
+        private static readonly Thickness GridLine = new Thickness(1);
+
         private RoutingEngine? _engine;
+        private Config? _config;            // config chargée (pour résoudre univers → IP au nœud ④)
         private WriteableBitmap? _bmp;
         private byte[] _snap = Array.Empty<byte>();
         private int _bmpUniverseCount = -1;
@@ -41,6 +50,31 @@ namespace Mappa.Ui
         // c'est la seule facon de distinguer "notre app envoie" d'une source tierce.
         private string _targets = "—";
         private readonly DispatcherTimer _uiTimer;
+
+        // Récepteur eHuB PARTAGÉ entre le nœud ① (débogage) et la case « Recevoir
+        // eHuB » du visualiseur. Un seul socket peut écouter un port UDP donné :
+        // en ouvrir deux faisait échouer le second en silence côté utilisateur.
+        // Compteur d'usages : on ferme le socket quand plus personne ne s'en sert.
+        private EhubReceiver? _sharedRx;
+        private int _sharedRxPort;
+        private int _sharedRxUsers;
+
+        // Débogage : récepteur eHuB du nœud ①. Les moniteurs affichent ce qu'il
+        // reçoit (rien tant qu'aucun eHuB n'arrive).
+        private EhubReceiver? _debugRx;
+        private long _lastRxPainted = -1;
+        private bool _debugDirty = true;
+        private byte[]? _lastDmx;           // dernière trame DMX affichée (pour « Envoyer la trame »)
+        private bool _fakerAnimating;       // faker : animation en cours
+        private int _fakerFrame;            // indice de frame d'animation
+        private int _fakerDelayMs = 120;    // cadence du faker animé / rafale
+        private long _lastFakerTickMs;      // horodatage du dernier envoi faker
+        private bool _fakerBurstRunning;    // évite les rafales concurrentes
+        private System.Net.Sockets.UdpClient? _simUdp; // socket du faux Unity (réutilisé)
+        private ArtNetSender? _artSender;   // émetteur ArtNet du nœud ④ (réutilisé)
+        private bool _artStreaming;         // ④ : émission en continu (hardware)
+        private bool _artStreamLoopRunning; // boucle d'émission continue en cours
+        private byte[] _artStreamFrame = FullFrame(255);
 
         public MainWindow()
         {
@@ -78,9 +112,36 @@ namespace Mappa.Ui
             };
             _rainbow.Brightness = (float)(BrightnessSlider.Value / 100.0);
 
+            ListenBtn.Click += (_, _) => ToggleListen();
+            SimulateUnityBtn.Click += (_, _) => SimulateUnity();
+            BurstBtn.Click += async (_, _) => await SendFakerBurstAsync();
+            FakerDelayBox.TextChanged += (_, _) => UpdateFakerDelay();
+            FormatBox.SelectionChanged += (_, _) => _debugDirty = true;
+            FilterStartBox.TextChanged += (_, _) => _debugDirty = true;
+            FilterEndBox.TextChanged += (_, _) => _debugDirty = true;
+            UniverseFilterBox.TextChanged += (_, _) => _debugDirty = true;
+            AccumulateChk.IsCheckedChanged += (_, _) => _debugDirty = true;
+            TestUniverseBox.TextChanged += (_, _) => RefreshNode4Ip();
+            SendFrameBtn.Click += (_, _) => SendArtNet(_lastDmx ?? FullFrame(0));
+            TestWhiteBtn.Click += (_, _) => SendArtNet(FullFrame(255));
+            TestBlackBtn.Click += (_, _) => SendArtNet(FullFrame(0));
+            AnimateBtn.Click += (_, _) => ToggleAnimate();
+            StreamBtn.Click += (_, _) => ToggleStream();
+            ModeObserveRadio.IsCheckedChanged += (_, _) => ApplyDebugMode();
+            ModeTestRadio.IsCheckedChanged += (_, _) => ApplyDebugMode();
+
             _uiTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
             _uiTimer.Tick += (_, _) => OnUiTick();
             _uiTimer.Start();
+
+            RefreshNode4Ip();  // affiche « charge une config » au démarrage
+            ApplyDebugMode();  // démarre en Observation : émission désactivée
+        }
+
+        private void UpdateFakerDelay()
+        {
+            if (int.TryParse(FakerDelayBox.Text, out int delay) && delay >= 0)
+                _fakerDelayMs = delay;
         }
 
         // ------------------------------------------------------------------ //
@@ -159,6 +220,7 @@ namespace Mappa.Ui
             bool wasRunning = _engine?.IsRunning ?? false;
 
             StopRouting();
+            _config = cfg;                       // dispo pour le nœud ④ (résolution univers → IP)
             BuildWallOffsets(cfg);
             BuildTargetSummary(cfg);
             _engine = new RoutingEngine(cfg)
@@ -167,6 +229,7 @@ namespace Mappa.Ui
                 Blackout = BlackoutChk.IsChecked ?? false,
             };
             UpdateFaker();
+            RefreshNode4Ip();                    // met à jour « univers → contrôleur » du débogage
             _bmp = null;
             _bmpUniverseCount = -1;
 
@@ -204,8 +267,8 @@ namespace Mappa.Ui
 
             if (!(EhubChk.IsChecked ?? false) && _ehubFaker != null)
             {
-                _ehubFaker.Dispose();
                 _ehubFaker = null;
+                ReleaseReceiver();
             }
 
             if (EhubChk.IsChecked ?? false)
@@ -215,7 +278,8 @@ namespace Mappa.Ui
                     int port = int.TryParse(EhubPortBox.Text, out var p) ? p : Ehub.DefaultUdpPort;
                     try
                     {
-                        _ehubFaker = new EhubFaker(port);
+                        // Récepteur partagé : le nœud ① écoute peut-être déjà ce port.
+                        _ehubFaker = new EhubFaker(AcquireReceiver(port));
                     }
                     catch (Exception ex)
                     {
@@ -238,11 +302,775 @@ namespace Mappa.Ui
             }
         }
 
+        /// <summary>
+        /// Ouvre (ou réutilise) LE récepteur eHuB de l'application. Un port UDP ne
+        /// peut être écouté que par un seul socket : si le visualiseur et le nœud ①
+        /// demandent le même port, ils partagent le même récepteur. Lève une
+        /// exception si on demande un AUTRE port pendant qu'un usage est en cours.
+        /// </summary>
+        private EhubReceiver AcquireReceiver(int port)
+        {
+            if (_sharedRx != null && _sharedRxUsers > 0 && _sharedRxPort != port)
+            {
+                throw new InvalidOperationException(
+                    $"le port {_sharedRxPort} est déjà écouté ; utilise le même port des deux côtés");
+            }
+            if (_sharedRx == null)
+            {
+                _sharedRx = new EhubReceiver(port);
+                _sharedRxPort = port;
+            }
+            _sharedRxUsers++;
+            return _sharedRx;
+        }
+
+        /// <summary>Rend un usage du récepteur partagé ; ferme le socket au dernier.</summary>
+        private void ReleaseReceiver()
+        {
+            if (_sharedRxUsers > 0) _sharedRxUsers--;
+            if (_sharedRxUsers != 0) return;
+            _sharedRx?.Dispose();
+            _sharedRx = null;
+        }
+
+        /// <summary>
+        /// Nœud ① : démarre/arrête l'écoute eHuB sur le port saisi. Tant qu'on
+        /// n'écoute pas (ou que rien n'arrive), les moniteurs restent vides.
+        /// </summary>
+        private void ToggleListen()
+        {
+            if (_debugRx == null)
+            {
+                int port = int.TryParse(InPortBox.Text, out var p) ? p : Ehub.DefaultUdpPort;
+                try { _debugRx = AcquireReceiver(port); }
+                catch (Exception ex) { Status("Écoute eHuB impossible : " + ex.Message); return; }
+                ListenBtn.Content = "■ Stop";
+                RxInfo.Text = _sharedRxUsers > 1
+                    ? $"à l'écoute sur {port} (partagé avec le visualiseur)…"
+                    : $"à l'écoute sur {port}…";
+            }
+            else
+            {
+                _debugRx = null;
+                ReleaseReceiver();
+                ListenBtn.Content = "▶ Écouter";
+                RxInfo.Text = "arrêté";
+            }
+            _debugDirty = true;
+        }
+
+        /// <summary>
+        /// Simulation minimale : envoie une frame eHuB locale avec la plage et la couleur saisies.
+        /// Elle sert juste à générer du trafic de test, sans modifier le monitor de réception.
+        /// </summary>
+        private void SimulateUnity() => SendFakerFrame(0);   // envoi ponctuel (image figée)
+
+        /// <summary>Envoie une petite rafale de frames eHuB pour tester les motifs animés.</summary>
+        private async Task SendFakerBurstAsync()
+        {
+            if (_fakerBurstRunning) return;
+            if (!int.TryParse(FakerBurstBox.Text, out int count) || count <= 0)
+            {
+                Status("Nombre de frames invalide pour la rafale.");
+                return;
+            }
+
+            _fakerBurstRunning = true;
+            BurstBtn.IsEnabled = false;
+            try
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    if (!SendFakerFrame(i, announce: false)) return;
+                    await Task.Delay(_fakerDelayMs);
+                }
+
+                Status($"Rafale de {count} frame(s) envoyée.");
+            }
+            finally
+            {
+                BurstBtn.IsEnabled = true;
+                _fakerBurstRunning = false;
+            }
+        }
+
+        /// <summary>
+        /// Envoie UNE frame eHuB du faker : plage + couleur + motif choisis, pour
+        /// l'indice d'animation <paramref name="frame"/> (chenillard / arc-en-ciel).
+        /// </summary>
+        private bool SendFakerFrame(int frame, bool announce = true)
+        {
+            if (!int.TryParse(SimStartBox.Text, out int start) ||
+                !int.TryParse(SimEndBox.Text, out int end) || end < start)
+            {
+                Status("Plage invalide : Start ID doit être ≤ End ID.");
+                _fakerAnimating = false;
+                return false;
+            }
+            if (!byte.TryParse(SimUniverseBox.Text, out byte ehubUniverse))
+            {
+                Status("Univers eHuB invalide : entre 0 et 255.");
+                _fakerAnimating = false;
+                return false;
+            }
+            var parts = (SimColorBox.Text ?? "").Split(',');
+            if (parts.Length != 3 ||
+                !byte.TryParse(parts[0].Trim(), out byte r) ||
+                !byte.TryParse(parts[1].Trim(), out byte g) ||
+                !byte.TryParse(parts[2].Trim(), out byte b))
+            {
+                Status("Couleur invalide : format R,V,B (ex : 255,255,0).");
+                _fakerAnimating = false;
+                return false;
+            }
+
+            int port = int.TryParse(SimPortBox.Text, out var p) ? p : Ehub.DefaultUdpPort;
+            var ids = new List<int>();
+            for (int id = start; id <= end; id++) ids.Add(id);
+            var st = new State(ids);
+            string motif = (FakerMotifBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Couleur unie";
+            FillMotif(st, ids, motif, r, g, b, frame);
+
+            try
+            {
+                byte[] packet = Ehub.EncodeUpdate(ehubUniverse, ids, st);
+                // Socket réutilisé : en animation on envoie ~30 frames/s, ouvrir
+                // et fermer un UdpClient à chaque fois épuiserait les ports éphémères.
+                _simUdp ??= new System.Net.Sockets.UdpClient();
+                _simUdp.Send(packet, packet.Length,
+                    new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, port));
+                if (announce && !_fakerAnimating) Status($"Frame eHuB « {motif} » envoyée.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Status("Envoi eHuB simulé impossible : " + ex.Message);
+                _fakerAnimating = false;
+                return false;
+            }
+        }
+
+        /// <summary>Remplit le State selon le motif (pour l'animation <paramref name="frame"/>).</summary>
+        private static void FillMotif(State st, IReadOnlyList<int> ids, string motif,
+                                      byte r, byte g, byte b, int frame)
+        {
+            int n = ids.Count;
+            if (n == 0) return;
+            st.Clear();
+            switch (motif)
+            {
+                case "Chenillard":
+                    st.Set(ids[frame % n], r, g, b);            // 1 LED allumée, qui se déplace
+                    break;
+                case "Arc-en-ciel":
+                    for (int i = 0; i < n; i++)
+                    {
+                        HsvToRgb(((double)i / n + frame * 0.02) % 1.0,
+                                 out byte rr, out byte gg, out byte bb);
+                        st.Set(ids[i], rr, gg, bb);
+                    }
+                    break;
+                case "Tout blanc":
+                    foreach (int id in ids) st.Set(id, 255, 255, 255);
+                    break;
+                case "Clignotement":
+                    if ((frame / 10) % 2 == 0)
+                        foreach (int id in ids) st.Set(id, r, g, b);
+                    break;
+                default:                                        // Couleur unie
+                    foreach (int id in ids) st.Set(id, r, g, b);
+                    break;
+            }
+        }
+
+        /// <summary>Bascule l'animation du faker (une frame envoyée à chaque tick).</summary>
+        private void ToggleAnimate()
+        {
+            _fakerAnimating = !_fakerAnimating;
+            _fakerFrame = 0;
+            _lastFakerTickMs = 0;
+            AnimateBtn.Content = _fakerAnimating ? "■ Stop" : "▶ Animer";
+            Status(_fakerAnimating ? "Animation du faker en cours…" : "Animation arrêtée.");
+        }
+
+        /// <summary>Teinte HSV (S=V=1) → RVB, pour le motif arc-en-ciel.</summary>
+        private static void HsvToRgb(double h, out byte r, out byte g, out byte b)
+        {
+            double hh = (h % 1.0) * 6.0;
+            int i = (int)Math.Floor(hh);
+            double f = hh - i, q = 1 - f, t = f;
+            double rd, gd, bd;
+            switch (((i % 6) + 6) % 6)
+            {
+                case 0: rd = 1; gd = t; bd = 0; break;
+                case 1: rd = q; gd = 1; bd = 0; break;
+                case 2: rd = 0; gd = 1; bd = t; break;
+                case 3: rd = 0; gd = q; bd = 1; break;
+                case 4: rd = t; gd = 0; bd = 1; break;
+                default: rd = 1; gd = 0; bd = q; break;
+            }
+            r = (byte)(rd * 255); g = (byte)(gd * 255); b = (byte)(bd * 255);
+        }
+
+        /// <summary>
+        /// Appelé à chaque tick : rafraîchit les moniteurs ②③④ avec ce qui a été
+        /// REÇU en eHuB. Rien reçu (ou pas à l'écoute) => moniteurs vides.
+        /// </summary>
+        private void UpdateDebugMonitors()
+        {
+            long rx = _debugRx?.PacketsReceived ?? 0;
+            if (!_debugDirty && rx == _lastRxPainted) return;
+            _debugDirty = false;
+            _lastRxPainted = rx;
+
+            // Rien reçu -> on n'affiche rien.
+            if (_debugRx == null || rx == 0)
+            {
+                LedMonitor.Children.Clear();
+                DmxMonitor.Children.Clear();
+                ArtNetMonitor.Children.Clear();
+                return;
+            }
+
+            // On inspecte le DERNIER paquet reçu (filtré par univers si demandé) :
+            // c'est l'image courante du système.
+            var received = _debugRx.SnapshotPackets();
+            byte? universeFilter = TryParseByte(UniverseFilterBox.Text);
+            var selectedPacket = LastPacket(received, universeFilter);
+            if (selectedPacket == null)
+            {
+                LedMonitor.Children.Clear();
+                DmxMonitor.Children.Clear();
+                ArtNetMonitor.Children.Clear();
+                // On annonce les univers RÉELLEMENT reçus : sans ça, un filtre qui
+                // ne matche rien donne un écran vide sans dire quoi saisir.
+                RxInfo.Text = $"reçu : {rx} paquet(s) — rien sur l'univers "
+                            + $"{universeFilter}. Univers reçus : {UniversesSeen(received)}";
+                return;
+            }
+
+            if (!int.TryParse(FilterStartBox.Text, out int start) ||
+                !int.TryParse(FilterEndBox.Text, out int end) || end < start)
+            {
+                RxInfo.Text = "plage ② invalide (Start ≤ End)";
+                return;
+            }
+
+            // Mode cumulé (défaut) : l'état courant de la plage, reconstitué à partir
+            // de TOUS les paquets reçus — c'est ce que fait le routage, et c'est stable
+            // à l'écran. Sinon : le seul dernier paquet, qui clignote dès que la source
+            // alterne des plages différentes.
+            PaintPipeline(BuildMonitorState(selectedPacket, start, end), start, end);
+            ShowUniversesFedBy(selectedPacket);
+
+            // La plage d'IDs du paquet est indispensable pour régler ② : sans elle,
+            // on inspecte des entités absentes du paquet et tout reste noir, sans
+            // qu'aucun message ne dise pourquoi.
+            string ids = EntitySpan(selectedPacket, out bool overlaps, start, end);
+            // En mode cumulé, un paquet hors plage est normal (la source alterne) :
+            // l'avertissement n'a de sens que si l'on n'affiche QUE ce paquet.
+            bool warn = !overlaps && !(AccumulateChk.IsChecked ?? true);
+            RxInfo.Text = $"reçu : {rx} paquet(s) · {selectedPacket.RemoteEndPoint.Address} · "
+                        + $"univers affiché {selectedPacket.Universe} (reçus : {UniversesSeen(received)})\n"
+                        + $"entités du dernier paquet : {ids}"
+                        + (warn ? $"  ⚠ hors de la plage ② ({start}–{end}) : règle-la sur ces IDs" : "");
+        }
+
+        /// <summary>
+        /// L'état à peindre en ② : soit l'état COURANT de la plage, reconstitué à
+        /// partir de tous les paquets reçus (le récepteur mémorise la dernière
+        /// couleur connue de chaque entité, comme le routage), soit le contenu du
+        /// seul dernier paquet quand on veut inspecter un paquet isolé.
+        /// </summary>
+        private State BuildMonitorState(EhubReceiver.PacketSnapshot packet, int start, int end)
+        {
+            if (!(AccumulateChk.IsChecked ?? true) || _debugRx == null) return packet.ToState();
+
+            int count = Math.Min(end - start + 1, MaxMonitoredLeds);
+            var ids = new List<int>(Math.Max(0, count));
+            for (int i = 0; i < count; i++) ids.Add(start + i);
+
+            var state = new State(ids);
+            _debugRx.Fill(state);   // les IDs hors plage sont ignorés par State.Set
+            return state;
+        }
+
+        /// <summary>
+        /// Plage d'IDs d'entités portée par un paquet, et si elle recoupe la plage
+        /// inspectée en ②. Sans recoupement, les moniteurs sont légitimement noirs.
+        /// </summary>
+        private static string EntitySpan(EhubReceiver.PacketSnapshot packet, out bool overlaps,
+                                         int start, int end)
+        {
+            overlaps = false;
+            var list = packet.EntityIds;
+            if (list.Length == 0) return "aucune";
+
+            int min = int.MaxValue, max = int.MinValue;
+            foreach (int id in list)
+            {
+                if (id < min) min = id;
+                if (id > max) max = id;
+                if (id >= start && id <= end) overlaps = true;
+            }
+            return $"{min}–{max} ({list.Length})";
+        }
+
+        /// <summary>Liste triée des univers eHuB présents dans les paquets reçus.</summary>
+        private static string UniversesSeen(IReadOnlyList<EhubReceiver.PacketSnapshot> packets)
+        {
+            var seen = new SortedSet<byte>();
+            for (int i = 0; i < packets.Count; i++) seen.Add(packets[i].Universe);
+            return seen.Count == 0 ? "aucun" : string.Join(", ", seen);
+        }
+
+        /// <summary>
+        /// Dernier paquet reçu, éventuellement restreint à un univers eHuB.
+        /// Retourne null si aucun paquet ne correspond au filtre.
+        /// </summary>
+        private static EhubReceiver.PacketSnapshot? LastPacket(
+            IReadOnlyList<EhubReceiver.PacketSnapshot> packets, byte? universeFilter)
+        {
+            for (int i = packets.Count - 1; i >= 0; i--)
+            {
+                if (!universeFilter.HasValue || packets[i].Universe == universeFilter.Value)
+                    return packets[i];
+            }
+            return null;
+        }
+
+        private static byte? TryParseByte(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            return byte.TryParse(text.Trim(), out byte value) ? value : null;
+        }
+
+        /// <summary>
+        /// Dessine les moniteurs ② (1 case = 1 LED), ③ (canaux selon le format)
+        /// et ④ (trame DMX) à partir des couleurs REÇUES dans <paramref name="state"/>.
+        /// </summary>
+        private void PaintPipeline(State state, int start, int end)
+        {
+            LedMonitor.Children.Clear();
+            DmxMonitor.Children.Clear();
+
+            // Garde-fou : un moniteur, c'est un échantillon, pas un mur. Une plage
+            // trop large créerait des dizaines de milliers de contrôles et figerait
+            // la fenêtre — et de toute façon un univers DMX ne porte pas plus de
+            // 170 LED RVB.
+            if (end - start + 1 > MaxMonitoredLeds) end = start + MaxMonitoredLeds - 1;
+
+            var dmx = new byte[Config.DmxChannelsPerUniverse];
+            int used = 0;
+            for (int id = start; id <= end; id++)
+            {
+                var c = state.Get(id); // couleur reçue (noir si cette entité n'a rien reçu)
+                LedMonitor.Children.Add(LedCell(new Avalonia.Media.SolidColorBrush(
+                    Avalonia.Media.Color.FromRgb(c.R, c.G, c.B))));
+
+                byte[] chans = ChannelsFor(c.R, c.G, c.B);
+                for (int k = 0; k < chans.Length; k++)
+                {
+                    DmxMonitor.Children.Add(DmxSquare(chans[k], k == chans.Length - 1 ? 5 : 0));
+                    if (used < dmx.Length) dmx[used++] = chans[k];
+                }
+            }
+            PaintArtNetMonitor(dmx, used);
+            _lastDmx = dmx;   // mémorisée pour « Envoyer la trame »
+            RefreshArtHeader();
+        }
+
+        /// <summary>Une trame DMX de 512 canaux, tous à <paramref name="level"/> (255 = blanc, 0 = noir).</summary>
+        private static byte[] FullFrame(byte level)
+        {
+            var dmx = new byte[Config.DmxChannelsPerUniverse];
+            if (level != 0) Array.Fill(dmx, level);
+            return dmx;
+        }
+
+        /// <summary>
+        /// Nœud ④ : envoie VRAIMENT une trame DMX en ArtNet vers l'IP + univers
+        /// saisis. C'est la fonction d'émission du débogage (validée par le prof).
+        /// </summary>
+        private void SendArtNet(byte[] dmx)
+        {
+            _artStreamFrame = dmx;   // trame que le mode « Continu » répétera
+            if (SendOnce(dmx, out string ip, out int universe))
+            {
+                Status(_artStreaming
+                    ? $"Émission continue vers {ip}, univers {universe}."
+                    : $"ArtNet envoyé à {ip}, univers {universe}.");
+            }
+        }
+
+        /// <summary>
+        /// Envoie UNE trame ArtNet vers l'IP/univers du nœud ④ (émetteur réutilisé).
+        /// Le numéro saisi peut être un index global de config ; on émet toujours
+        /// l'univers ArtNet LOCAL du contrôleur (0..31), comme le fait le routage
+        /// réel (ArtNetSender.SendPlan). Sans cette traduction, un index global
+        /// partirait tel quel et le contrôleur ignorerait la trame en silence.
+        /// </summary>
+        private bool SendOnce(byte[] dmx, out string ip, out int universe)
+        {
+            ip = TestIpBox.Text?.Trim() ?? "";
+            universe = int.TryParse(TestUniverseBox.Text, out var u) ? u : 0;
+            var routed = ResolveController(universe);
+            if (routed.HasValue) universe = routed.Value.local;
+            if (string.IsNullOrEmpty(ip))
+            {
+                Status("Renseigne une IP dans le nœud ④ avant d'envoyer.");
+                _artStreaming = false;
+                return false;
+            }
+            try
+            {
+                int port = int.TryParse(TestPortBox.Text, out var p) ? p : 6454;
+                _artSender ??= new ArtNetSender();
+                _artSender.Send(ip, universe, dmx, port);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Status("Envoi ArtNet impossible : " + ex.Message);
+                _artStreaming = false;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Applique le mode de la page débogage.
+        ///  - Observation (défaut) : écoute seule, TOUTE émission est désactivée
+        ///    → on ne peut pas perturber le système en production.
+        ///  - Test : les boutons d'émission sont actifs, avec un bandeau d'alerte.
+        /// Repasser en Observation coupe immédiatement les émissions en cours.
+        /// </summary>
+        private void ApplyDebugMode()
+        {
+            bool test = ModeTestRadio.IsChecked ?? false;
+
+            SimulateUnityBtn.IsEnabled = test;
+            AnimateBtn.IsEnabled = test;
+            BurstBtn.IsEnabled = test;
+            SendFrameBtn.IsEnabled = test;
+            TestWhiteBtn.IsEnabled = test;
+            TestBlackBtn.IsEnabled = test;
+            StreamBtn.IsEnabled = test;
+            EmitWarning.IsVisible = test;
+
+            // En Observation, la carte Simulation disparaît : le pipeline commence
+            // alors à ① et n'affiche QUE du signal réellement reçu.
+            SimulationCard.IsVisible = test;
+            SimulationArrow.IsVisible = test;
+
+            // L'IP du nœud ④ change de nature selon le mode :
+            //  - Observation : information LUE dans la config (« cet univers part là »),
+            //    donc non modifiable — on n'oriente pas un flux qu'on se contente de regarder.
+            //  - Test : commande d'émission, donc modifiable (cibler un contrôleur précis).
+            TestIpBox.IsReadOnly = !test;
+            TestIpBox.Opacity = test ? 1.0 : 0.6;
+
+            // L'univers reste éditable dans les deux modes : il paramètre l'APERÇU
+            // du paquet (en-tête + IP résolue). En Observation rien ne part, donc
+            // le modifier est sans effet sur le système observé.
+            Node4Role.Text = test
+                ? "Univers + IP + port = destination réelle, à saisir toi-même. Un envoi allume la sortie correspondante."
+                : "Aperçu seul : change l'univers pour voir le paquet qui partirait. Rien n'est émis.";
+
+            if (!test)
+            {
+                // Sécurité : on coupe tout ce qui émet en repassant en observation.
+                if (_fakerAnimating) { _fakerAnimating = false; AnimateBtn.Content = "▶ Animer"; }
+                if (_artStreaming) { _artStreaming = false; StreamBtn.Content = "▶ Continu"; }
+                Status("Mode Observation : écoute seule, aucune émission.");
+            }
+            else
+            {
+                Status("Mode Test : l'outil peut ÉMETTRE sur le réseau.");
+            }
+        }
+
+        /// <summary>
+        /// Bascule l'émission ArtNet EN CONTINU. Nécessaire pour le vrai matériel :
+        /// les contrôleurs oublient un paquet isolé, ils ont besoin d'un flux.
+        /// </summary>
+        private void ToggleStream()
+        {
+            _artStreaming = !_artStreaming;
+            StreamBtn.Content = _artStreaming ? "■ Stop" : "▶ Continu";
+            if (_artStreaming)
+            {
+                _ = RunArtStreamLoopAsync();
+            }
+            Status(_artStreaming
+                ? "Émission ArtNet EN CONTINU — les LEDs restent allumées."
+                : "Émission continue arrêtée.");
+        }
+
+        /// <summary>
+        /// Boucle d'émission ArtNet dédiée au mode continu. Elle n'utilise pas le
+        /// timer UI, donc le flux reste actif même si l'interface ralentit.
+        /// </summary>
+        private async Task RunArtStreamLoopAsync()
+        {
+            if (_artStreamLoopRunning) return;
+            _artStreamLoopRunning = true;
+            try
+            {
+                while (_artStreaming)
+                {
+                    SendOnce(GetLiveStreamFrame(), out _, out _);
+                    await Task.Delay(33);
+                }
+            }
+            finally
+            {
+                _artStreamLoopRunning = false;
+            }
+        }
+
+        /// <summary>
+        /// Retourne la trame la plus récente à émettre en continu : la dernière
+        /// trame DMX affichée si elle existe, sinon la trame mémorisée par le bouton.
+        /// </summary>
+        private byte[] GetLiveStreamFrame() => _lastDmx ?? _artStreamFrame;
+
+        /// <summary>
+        /// Canaux DMX d'une LED selon son type (nœud ③) : certaines LED n'ont
+        /// qu'un seul canal (mono), d'autres 3 (RGB), parfois dans l'ordre GRB.
+        /// </summary>
+        private byte[] ChannelsFor(byte r, byte g, byte b)
+        {
+            string fmt = (FormatBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "RGB";
+            return fmt switch
+            {
+                "GRB" => new byte[] { g, r, b },
+                "Mono (R)" => new byte[] { r },
+                _ => new byte[] { r, g, b },   // RGB
+            };
+        }
+
+        /// <summary>
+        /// Nœud ④ : affiche vers quelle IP (contrôleur) partirait l'univers saisi,
+        /// résolu DEPUIS LA CONFIG (univers → contrôleur → IP), ainsi que le
+        /// numéro d'univers LOCAL réellement écrit dans l'en-tête ArtNet.
+        /// Il signale les univers « non routés » (aucun contrôleur ne les prend),
+        /// un bug de config classique à débusquer.
+        /// </summary>
+        private void RefreshNode4Ip()
+        {
+            if (!int.TryParse(TestUniverseBox.Text, out int uni) || _config == null)
+            {
+                Node4Hint.Text = _config == null ? "(charge une config pour l'info de routage)" : "";
+                RefreshArtHeader();
+                return;
+            }
+            var res = ResolveController(uni);
+            if (res.HasValue)
+            {
+                // Information seule : on n'écrit RIEN dans les champs IP et Port.
+                // C'est l'utilisateur qui choisit sa cible ; la config se contente
+                // de lui dire ce qu'elle sait de cet univers.
+                string head = res.Value.local == uni
+                    ? $"→ {res.Value.id} · {res.Value.ip} · univers ArtNet {res.Value.local}"
+                    : $"→ {res.Value.id} · {res.Value.ip} · index global {uni} → univers ArtNet {res.Value.local}";
+                var range = EntityRangeFor(uni);
+                Node4Hint.Text = range.HasValue
+                    ? $"{head}\nporte les entités {range.Value.first}–{range.Value.last}"
+                    : $"{head}\naucune entité mappée sur cet univers";
+            }
+            else
+            {
+                Node4Hint.Text = "⚠ univers non routé dans la config";
+            }
+            RefreshArtHeader();
+        }
+
+        /// <summary>
+        /// Nœud ④ : affiche l'en-tête ArtNet RÉEL (les 18 premiers octets), tel
+        /// que <see cref="ArtNetSender.BuildPacket"/> le fabriquerait. C'est ce
+        /// qui distingue ④ de ③ : ③ montre les canaux, ④ montre l'enveloppe qui
+        /// les transporte — et donc l'effet visible du numéro d'univers.
+        /// </summary>
+        private void RefreshArtHeader()
+        {
+            int typed = int.TryParse(TestUniverseBox.Text, out var u) ? u : 0;
+            var routed = ResolveController(typed);
+            int universe = routed?.local ?? typed;
+
+            byte[] pkt = ArtNetSender.BuildPacket(universe, _lastDmx ?? Array.Empty<byte>());
+            int dataLen = (pkt[16] << 8) | pkt[17];
+
+            ArtHeaderText.Text =
+                $"\"Art-Net\\0\"   {Hex(pkt, 0, 8)}\n" +
+                $"OpCode ArtDMX {Hex(pkt, 8, 2)}\n" +
+                $"Version 14    {Hex(pkt, 10, 2)}\n" +
+                $"Seq / Phys    {Hex(pkt, 12, 2)}\n" +
+                $"Univers {universe,-5} {Hex(pkt, 14, 2)}\n" +
+                $"Longueur {dataLen,-4} {Hex(pkt, 16, 2)}";
+        }
+
+        /// <summary>Formate <paramref name="count"/> octets en hexadécimal.</summary>
+        private static string Hex(byte[] data, int offset, int count)
+        {
+            var sb = new System.Text.StringBuilder(count * 3);
+            for (int i = 0; i < count; i++)
+            {
+                if (i > 0) sb.Append(' ');
+                sb.Append(data[offset + i].ToString("X2"));
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Univers ArtNet sur lequel la config pose cette entité (null si non mappée).
+        /// C'est la question inverse de <see cref="EntityRangeFor"/>, et c'est la
+        /// vraie règle du routage : l'univers se déduit des ENTITÉS transportées,
+        /// jamais du numéro d'univers eHuB (les deux numérotations sont distinctes).
+        /// </summary>
+        private int? UniverseForEntity(int entityId)
+        {
+            if (_config == null) return null;
+            foreach (var m in _config.EntityMap)
+                if (entityId >= m.EntityStart && entityId <= m.EntityEnd)
+                    return m.UniverseStart;
+            return null;
+        }
+
+        /// <summary>
+        /// Fait le lien entre ce qu'on REÇOIT (①) et ce qui PARTIRAIT (④) : les
+        /// entités du paquet eHuB observé sont converties, via la config, en
+        /// univers ArtNet. Un même paquet peut en alimenter plusieurs — c'est
+        /// justement ce qu'aucune correspondance de numéros ne pourrait deviner.
+        /// Purement informatif : on ne force pas le champ, l'utilisateur reste maître.
+        /// </summary>
+        private void ShowUniversesFedBy(EhubReceiver.PacketSnapshot packet)
+        {
+            if (_config == null)
+            {
+                Node4Feeds.Text = "";
+                return;
+            }
+
+            var fed = new SortedSet<int>();
+            int unmapped = 0;
+            foreach (int id in packet.EntityIds)
+            {
+                int? u = UniverseForEntity(id);
+                if (u.HasValue) fed.Add(u.Value); else unmapped++;
+            }
+
+            if (fed.Count == 0)
+            {
+                Node4Feeds.Text = "⚠ aucune entité de ce paquet n'est mappée dans la config";
+                return;
+            }
+            Node4Feeds.Text = $"ce paquet alimente les univers ArtNet : {string.Join(", ", fed)}"
+                            + (unmapped > 0 ? $"  ({unmapped} entité(s) non mappée(s))" : "");
+        }
+
+        /// <summary>
+        /// Plage d'entités que la config pose sur cet univers (null si aucune).
+        /// C'est ce que le vrai routage utilise pour décider quelle entité part où.
+        /// </summary>
+        private (int first, int last)? EntityRangeFor(int universe)
+        {
+            if (_config == null) return null;
+            int first = int.MaxValue, last = int.MinValue;
+            foreach (var m in _config.EntityMap)
+            {
+                if (m.UniverseStart != universe) continue;
+                if (m.EntityStart < first) first = m.EntityStart;
+                if (m.EntityEnd > last) last = m.EntityEnd;
+            }
+            return first <= last ? (first, last) : null;
+        }
+
+        /// <summary>
+        /// Cherche dans la config le contrôleur d'un univers donné. Accepte les
+        /// deux numérotations (index global ou univers ArtNet local) et retourne
+        /// aussi le numéro LOCAL (0..31), seul compris par le contrôleur.
+        /// </summary>
+        private (string ip, string id, int local, int port)? ResolveController(int universe)
+        {
+            if (_config == null) return null;
+            foreach (var u in _config.Universes)
+            {
+                if (u.Index == universe || u.ArtNetUniverse == universe)
+                {
+                    foreach (var c in _config.Controllers)
+                        if (c.Id == u.ControllerId) return (c.Ip, c.Id, u.EffectiveArtNetUniverse, c.Port);
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Moniteur du nœud ④ : dessine les <paramref name="count"/> premiers
+        /// canaux de la trame DMX qui part (ou partirait) en ArtNet.
+        /// 1 carré = 1 canal, niveau de gris = intensité (0 éteint → 255 blanc).
+        /// </summary>
+        private void PaintArtNetMonitor(byte[] dmx, int count) => PaintDmxGrid(ArtNetMonitor, dmx, count);
+
+        /// <summary>Dessine une grille de canaux DMX (1 carré = 1 canal, gris = intensité) dans un panneau.</summary>
+        private static void PaintDmxGrid(WrapPanel target, byte[] dmx, int count)
+        {
+            target.Children.Clear();
+            count = Math.Min(count, dmx.Length);
+            for (int i = 0; i < count; i++)
+            {
+                byte v = dmx[i];
+                target.Children.Add(new Border
+                {
+                    Width = 12,
+                    Height = 12,
+                    Margin = new Thickness(1),
+                    Background = new Avalonia.Media.SolidColorBrush(
+                        Avalonia.Media.Color.FromRgb(v, v, v)),
+                    BorderBrush = GridBrush,
+                    BorderThickness = GridLine,
+                });
+            }
+        }
+
+        /// <summary>Une case LED (16x16) de la couleur donnée, avec contour de grille.</summary>
+        private static Border LedCell(Avalonia.Media.IBrush brush) => new Border
+        {
+            Width = 16,
+            Height = 16,
+            Margin = new Thickness(1),
+            Background = brush,
+            BorderBrush = GridBrush,
+            BorderThickness = GridLine,
+        };
+
+        /// <summary>Un carré DMX : luminosité (gris) = valeur du canal (0 éteint, 255 blanc).</summary>
+        private static Border DmxSquare(byte value, double rightMargin) => new Border
+        {
+            Width = 8,
+            Height = 14,
+            Margin = new Thickness(1, 1, rightMargin, 1),
+            Background = new Avalonia.Media.SolidColorBrush(
+                Avalonia.Media.Color.FromRgb(value, value, value)),
+            BorderBrush = GridBrush,
+            BorderThickness = GridLine,
+        };
+
         // ------------------------------------------------------------------ //
         // Boucle d'affichage (thread UI)
         // ------------------------------------------------------------------ //
         private void OnUiTick()
         {
+            if (_fakerAnimating)
+            {
+                long nowMs = Environment.TickCount64;
+                if (_lastFakerTickMs == 0 || nowMs - _lastFakerTickMs >= _fakerDelayMs)
+                {
+                    _lastFakerTickMs = nowMs;
+                    SendFakerFrame(_fakerFrame++); // faker animé
+                }
+            }
+            UpdateDebugMonitors(); // onglet Débogage : marche même sans config chargée
+
             if (_engine == null) return;
 
             _engine.CopySnapshot(ref _snap, out int stride, out var universes);
@@ -446,8 +1274,12 @@ namespace Mappa.Ui
         protected override void OnClosed(EventArgs e)
         {
             _uiTimer.Stop();
+            _fakerAnimating = false;   // arrête la boucle du faker
+            _artStreaming = false;     // arrête l'émission ArtNet continue
             _engine?.Dispose();
-            _ehubFaker?.Dispose();
+            _sharedRx?.Dispose();       // récepteur eHuB partagé (nœud ① + visualiseur)
+            _artSender?.Dispose();
+            _simUdp?.Dispose();
             base.OnClosed(e);
         }
     }
