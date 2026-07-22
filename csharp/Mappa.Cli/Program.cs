@@ -41,6 +41,8 @@ internal static class Program
             case "anim" when args.Length >= 3: return Anim(args);
             case "image" when args.Length >= 2: return ImageCmd(args);
             case "import" when args.Length >= 2: return Import(args);
+            case "ramp" when args.Length >= 2: return Ramp(args);
+            case "preset" when args.Length >= 2: return Preset(args);
             default: PrintUsage(); return 1;
         }
     }
@@ -129,6 +131,21 @@ internal static class Program
         Console.WriteLine("    --sheet <feuille>  feuille a lire (defaut: la 1ere, ou 'eHuB' si presente).");
         Console.WriteLine();
         Console.WriteLine("  Exemple : mappa import panneau.xlsx --out ../configs/panneau.json");
+        Console.WriteLine();
+        Console.WriteLine("ramp : envoie une rampe 0->255->0 progressive sur UNE entite (canal DMX).");
+        Console.WriteLine("       Sert a identifier pan/tilt d'une lyre : la lyre tourne visiblement");
+        Console.WriteLine("       si le canal teste controle un mouvement, sinon rien ne bouge.");
+        Console.WriteLine("  Usage : mappa ramp <config.json> --entity <id> [--ip .. --seconds N --hz 40]");
+        Console.WriteLine("  Options :");
+        Console.WriteLine("    --entity <id>      entite (= canal DMX) a ramper (obligatoire).");
+        Console.WriteLine("    --seconds <n>      duree totale de la rampe aller-retour (defaut: 6).");
+        Console.WriteLine("    --triangle         rampe 0->255->0 (defaut).");
+        Console.WriteLine("    --saw              rampe 0->255 en boucle (dents de scie).");
+        Console.WriteLine("    --ip <adresse>     force l'IP du controleur.");
+        Console.WriteLine("    --hz <n>           frequence d'envoi (defaut: 40).");
+        Console.WriteLine();
+        Console.WriteLine("  Exemple pan lyre1 : mappa ramp configs/ecran.json --entity 10 --seconds 8");
+        Console.WriteLine("  Puis tilt lyre1   : mappa ramp configs/ecran.json --entity 12 --seconds 8");
         Console.WriteLine();
         Console.WriteLine("emit : FAUX EMITTER eHuB (debug). Joue le role d'Unity : envoie des");
         Console.WriteLine("       paquets eHuB en UDP au routage, sans lancer Unity.");
@@ -535,6 +552,7 @@ internal static class Program
         string ip = "255.255.255.255";
         bool alsoBroadcast = false;
         int universes = 16;
+        int startUniverse = 0;
         byte r = 255, g = 255, b = 255;
         int holdSec = 5;
         bool step = false;
@@ -547,6 +565,11 @@ internal static class Program
                 case "--ip" when i + 1 < args.Length: ip = args[++i]; break;
                 case "--broadcast": alsoBroadcast = true; break;
                 case "--universes" when i + 1 < args.Length: universes = int.Parse(args[++i]); break;
+                case "--start" when i + 1 < args.Length: startUniverse = int.Parse(args[++i]); break;
+                case "--only" when i + 1 < args.Length:
+                    startUniverse = int.Parse(args[++i]);
+                    universes = startUniverse + 1;
+                    break;
                 case "--hold" when i + 1 < args.Length: holdSec = int.Parse(args[++i]); break;
                 case "--port" when i + 1 < args.Length: port = int.Parse(args[++i]); break;
                 case "--step": step = true; break;
@@ -580,7 +603,7 @@ internal static class Program
 
         Console.WriteLine($"SCAN diagnostic");
         Console.WriteLine($"  Cibles   : {string.Join(", ", targets)} : {port}");
-        Console.WriteLine($"  Univers  : 0..{universes - 1}");
+        Console.WriteLine($"  Univers  : {startUniverse}..{universes - 1}");
         Console.WriteLine($"  Couleur  : RVB=({r},{g},{b}) sur tous les canaux");
         Console.WriteLine($"  Mode     : {(step ? "pas-a-pas" : "tous en meme temps")}, {holdSec}s");
         Console.WriteLine();
@@ -596,7 +619,7 @@ internal static class Program
 
         if (step)
         {
-            for (int u = 0; u < universes && running; u++)
+            for (int u = startUniverse; u < universes && running; u++)
             {
                 Console.WriteLine($"  -> univers {u} (Ctrl+C pour arreter)");
                 var until = DateTime.UtcNow.AddSeconds(holdSec);
@@ -613,18 +636,18 @@ internal static class Program
             int frames = 0;
             while (running && DateTime.UtcNow < until)
             {
-                for (int u = 0; u < universes; u++) Blast(u);
+                for (int u = startUniverse; u < universes; u++) Blast(u);
                 frames++;
                 System.Threading.Thread.Sleep(25);
             }
-            Console.WriteLine($"  {frames} salves envoyees sur {universes} univers.");
+            Console.WriteLine($"  {frames} salves envoyees sur univers {startUniverse}..{universes - 1}.");
         }
 
         // Extinction.
         var black = new byte[Config.DmxChannelsPerUniverse];
         for (int rep = 0; rep < 3; rep++)
         {
-            for (int u = 0; u < universes; u++)
+            for (int u = startUniverse; u < universes; u++)
                 foreach (var t in targets) sender.Send(t, u, black, port);
             System.Threading.Thread.Sleep(25);
         }
@@ -1080,6 +1103,200 @@ internal static class Program
         }
         RunRenderLoop(config, plan, state, sender, hz,
             label: $"Envoi image en boucle a {hz} Hz (Ctrl+C pour arreter)...");
+        return 0;
+    }
+
+    // ------------------------------------------------------------------ //
+    // ramp : envoie une rampe temporelle 0->255->0 sur UNE entite (=1 canal
+    // DMX). Sert a identifier les canaux de mouvement (pan/tilt) sur une
+    // lyre : si le canal fait bouger, on voit un mouvement continu au lieu
+    // d'un simple "on/off". Pratique pour distinguer pan (mouvement horizontal
+    // lisse) de tilt (vertical lisse) de dimmer (variation d'intensite).
+    // ------------------------------------------------------------------ //
+    private static int Ramp(string[] args)
+    {
+        string configPath = args[1];
+        string? overrideIp = null;
+        int? entity = null;
+        double seconds = 6.0;
+        int hz = 40;
+        bool saw = false; // false = triangle 0->255->0, true = dents de scie
+
+        for (int i = 2; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--ip" when i + 1 < args.Length: overrideIp = args[++i]; break;
+                case "--entity" when i + 1 < args.Length: entity = int.Parse(args[++i]); break;
+                case "--seconds" when i + 1 < args.Length:
+                    seconds = double.Parse(args[++i], System.Globalization.CultureInfo.InvariantCulture);
+                    break;
+                case "--hz" when i + 1 < args.Length: hz = int.Parse(args[++i]); break;
+                case "--triangle": saw = false; break;
+                case "--saw": saw = true; break;
+                default: Console.Error.WriteLine($"Option inconnue : {args[i]}"); return 1;
+            }
+        }
+
+        if (!entity.HasValue)
+        {
+            Console.Error.WriteLine("--entity <id> obligatoire (ex: --entity 10 pour le 1er canal de lyre1)");
+            return 1;
+        }
+        if (seconds <= 0) seconds = 6.0;
+
+        var config = LoadConfigWithIp(configPath, overrideIp);
+        if (config == null) return 1;
+
+        var plan = new RoutingPlan(config);
+        var state = State.FromConfig(config);
+        if (!state.Contains(entity.Value))
+        {
+            Console.Error.WriteLine($"Entite {entity.Value} absente de la config.");
+            return 1;
+        }
+
+        int periodMs = hz > 0 ? Math.Max(1, 1000 / hz) : 25;
+        int totalFrames = (int)(seconds * hz);
+        bool running = true;
+        Console.CancelKeyPress += (_, e) => { e.Cancel = true; running = false; };
+
+        Console.WriteLine($"Ramp entite {entity.Value} : {(saw ? "saw" : "triangle")} sur {seconds:F1}s a {hz} Hz");
+        Console.WriteLine("Regarde la lyre : mouvement continu = canal de mouvement (pan/tilt).");
+        Console.WriteLine("                  Variation d'intensite = dimmer.");
+        Console.WriteLine("                  Rien = canal inactif/inconnu.");
+
+        using var sender = new ArtNetSender();
+        for (int f = 0; f < totalFrames && running; f++)
+        {
+            double t = (double)f / totalFrames; // 0..1
+            byte v;
+            if (saw)
+            {
+                v = (byte)(t * 255.0);
+            }
+            else
+            {
+                // triangle : 0..1..0
+                double tri = t < 0.5 ? t * 2.0 : (1.0 - t) * 2.0;
+                v = (byte)(tri * 255.0);
+            }
+            state.Set(entity.Value, v, 0, 0);
+            state.MarkUpdated();
+            sender.SendPlan(config, plan.Render(state));
+            System.Threading.Thread.Sleep(periodMs);
+        }
+
+        // Extinction propre.
+        state.Clear();
+        for (int i = 0; i < 3; i++)
+        {
+            sender.SendPlan(config, plan.Render(state));
+            System.Threading.Thread.Sleep(periodMs);
+        }
+        Console.WriteLine("Termine. Canal remis a zero.");
+        return 0;
+    }
+
+    // ------------------------------------------------------------------ //
+    // preset : allume simultanement plusieurs entites avec des valeurs
+    // differentes, en boucle a 40 Hz. Utile pour poser une "pose" (lyre
+    // dirigee vers le ciel + dimmer + couleur) sans que chaque canal ne
+    // s'ecrase mutuellement.
+    //
+    // Usage :
+    //   mappa preset <config.json> --ip <IP> --set <e=v[,e=v,...]> [--hold <sec>]
+    //
+    // Exemple : Lyre 1 vers le ciel, blanc, dimmer 100% + projo blanc pendant 8s :
+    //   mappa preset configs/ecran.json --ip 192.168.1.48 --hold 8 \
+    //     --set 1=255,2=255,3=255,\
+    //           10=128,11=0,12=255,13=255,14=128,15=255,17=255,18=255,19=255
+    // ------------------------------------------------------------------ //
+    private static int Preset(string[] args)
+    {
+        string configPath = args[1];
+        string? overrideIp = null;
+        double holdSec = 5.0;
+        int hz = 40;
+        var pairs = new List<(int Entity, byte Value)>();
+
+        for (int i = 2; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--ip" when i + 1 < args.Length: overrideIp = args[++i]; break;
+                case "--hold" when i + 1 < args.Length:
+                    holdSec = double.Parse(args[++i], System.Globalization.CultureInfo.InvariantCulture);
+                    break;
+                case "--hz" when i + 1 < args.Length: hz = int.Parse(args[++i]); break;
+                case "--set" when i + 1 < args.Length:
+                    foreach (var chunk in args[++i].Split(','))
+                    {
+                        var kv = chunk.Split('=');
+                        if (kv.Length != 2 || !int.TryParse(kv[0], out int eid) || !byte.TryParse(kv[1], out byte val))
+                        {
+                            Console.Error.WriteLine($"--set attend 'e=v,e=v,...' (ex: 15=255,10=128). Erreur sur '{chunk}'");
+                            return 1;
+                        }
+                        pairs.Add((eid, val));
+                    }
+                    break;
+                default: Console.Error.WriteLine($"Option inconnue : {args[i]}"); return 1;
+            }
+        }
+
+        if (pairs.Count == 0)
+        {
+            Console.Error.WriteLine("--set <entity=value,...> obligatoire.");
+            return 1;
+        }
+
+        var config = LoadConfigWithIp(configPath, overrideIp);
+        if (config == null) return 1;
+        var plan = new RoutingPlan(config);
+        var state = State.FromConfig(config);
+
+        foreach (var (eid, val) in pairs)
+        {
+            if (!state.Contains(eid))
+            {
+                Console.Error.WriteLine($"Entite {eid} absente de la config.");
+                return 1;
+            }
+            state.Set(eid, val, 0, 0);
+        }
+        state.MarkUpdated();
+
+        Console.WriteLine($"Preset : {pairs.Count} canaux poses simultanement.");
+        foreach (var (eid, val) in pairs)
+        {
+            var addr = plan.AddressOf(eid);
+            if (addr.HasValue)
+                Console.WriteLine($"  entite {eid,4} = {val,3}  -> univers {addr.Value.Universe}, canal DMX {addr.Value.Channel + 1}");
+        }
+        Console.WriteLine($"Envoi a {hz} Hz pendant {holdSec:F1}s (Ctrl+C pour arreter).");
+
+        int periodMs = hz > 0 ? Math.Max(1, 1000 / hz) : 25;
+        int totalFrames = (int)(holdSec * hz);
+        bool running = true;
+        Console.CancelKeyPress += (_, e) => { e.Cancel = true; running = false; };
+
+        using var sender = new ArtNetSender();
+        for (int f = 0; f < totalFrames && running; f++)
+        {
+            sender.SendPlan(config, plan.Render(state));
+            System.Threading.Thread.Sleep(periodMs);
+        }
+
+        // Extinction propre.
+        state.Clear();
+        state.MarkUpdated();
+        for (int i = 0; i < 3; i++)
+        {
+            sender.SendPlan(config, plan.Render(state));
+            System.Threading.Thread.Sleep(periodMs);
+        }
+        Console.WriteLine("Termine. Canaux remis a zero.");
         return 0;
     }
 
