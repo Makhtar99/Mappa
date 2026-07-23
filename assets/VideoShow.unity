@@ -883,6 +883,7 @@ GameObject:
   - component: {fileID: 1382622170}
   - component: {fileID: 1382622168}
   - component: {fileID: 1382622169}
+  - component: {fileID: 1382622171}
   m_Layer: 0
   m_Name: Projector
   m_TagString: Untagged
@@ -928,6 +929,52 @@ MonoBehaviour:
   followLyreOrientation: 1
   panSwingDeg: 45
   tiltSwingDeg: 45
+--- !u!114 &1382622171
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1382622167}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c3f8a1d94b2e4470a9d6e5f1b7c20834, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::ProjectorInteractive
+  target: {fileID: 1382622168}
+  bindings:
+  - key: 114
+    color: {r: 1, g: 0, b: 0, a: 1}
+    white: 0
+  - key: 118
+    color: {r: 0, g: 1, b: 0, a: 1}
+    white: 0
+  - key: 98
+    color: {r: 0, g: 0, b: 1, a: 1}
+    white: 0
+  - key: 106
+    color: {r: 1, g: 1, b: 0, a: 1}
+    white: 0
+  - key: 99
+    color: {r: 0, g: 1, b: 1, a: 1}
+    white: 0
+  - key: 109
+    color: {r: 1, g: 0, b: 1, a: 1}
+    white: 0
+  - key: 119
+    color: {r: 0, g: 0, b: 0, a: 1}
+    white: 1
+  - key: 110
+    color: {r: 0, g: 0, b: 0, a: 1}
+    white: 0
+  toggleKey: 32
+  dimUpKey: 273
+  dimDownKey: 274
+  releaseKey: 27
+  helpKey: 104
+  fade: 0.15
+  dimmerStep: 0.1
+  showHelp: 1
 --- !u!4 &1382622170
 Transform:
   m_ObjectHideFlags: 0
