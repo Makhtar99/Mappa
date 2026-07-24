@@ -9,7 +9,8 @@ public static class VideoShowBuilder
     private const string AudioAsset = "Assets/Audio/Sweden - My_System.mp3";
     private const string TimelineAsset = "Assets/VideoShow_Timeline.playable";
     private const double StartInSong = 40.0;
-    private const double Duration = 30.0;
+    private const double Duration = 36.0;
+    private const double FadeOut = 4.0;
 
     [MenuItem("Tools/Mappa/Build VideoShow (Timeline 40s-70s)")]
     public static void Build()
@@ -45,19 +46,23 @@ public static class VideoShowBuilder
             ac.start = 0;
             ac.duration = Duration;
             ac.clipIn = StartInSong;
+            ac.easeOutDuration = FadeOut;
+            ac.easeInDuration = 0.5;
         }
 
         var scenes = tl.CreateTrack<SceneTrack>(null, "Scenes");
         ShowScene[] seq = { ShowScene.Beams, ShowScene.Tunnel, ShowScene.Starburst, ShowScene.Lasers, ShowScene.Rings, ShowScene.Spiral };
         double pos = 0;
         double slot = Duration / seq.Length;
-        foreach (var s in seq)
+        for (int i = 0; i < seq.Length; i++)
         {
             var clip = scenes.CreateClip<SceneClip>();
             clip.start = pos;
             clip.duration = slot;
-            clip.displayName = s.ToString();
-            ((SceneClip)clip.asset).template.scene = s;
+            clip.displayName = seq[i].ToString();
+            if (i == 0) clip.easeInDuration = 1.0;
+            if (i == seq.Length - 1) clip.easeOutDuration = FadeOut;
+            ((SceneClip)clip.asset).template.scene = seq[i];
             pos += slot;
         }
 
@@ -143,8 +148,9 @@ public static class VideoShowBuilder
         var pt = tlGo.AddComponent<ProjectorTimeline>();
         pt.lyres = lyres;
         pt.projector = projector;
-        pt.duration = 30f;
-        pt.loop = true;
+        pt.duration = (float)Duration;
+        pt.loop = false;
+        pt.fadeOutTime = (float)FadeOut;
         pt.playOnStart = true;
         pt.alternateByLyre = true;
 

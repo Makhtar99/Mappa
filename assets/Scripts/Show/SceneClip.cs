@@ -27,7 +27,7 @@ public class SceneClip : PlayableAsset, ITimelineClipAsset
 {
     public SceneBehaviour template = new SceneBehaviour();
 
-    public ClipCaps clipCaps => ClipCaps.None;
+    public ClipCaps clipCaps => ClipCaps.Blending;
 
     public override Playable CreatePlayable(PlayableGraph graph, GameObject owner)
         => ScriptPlayable<SceneBehaviour>.Create(graph, template);

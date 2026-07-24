@@ -34,6 +34,9 @@ public sealed class ProjectorTimeline : MonoBehaviour
     [Tooltip("Rejouer la sequence en boucle une fois terminee.")]
     public bool loop = true;
 
+    [Tooltip("Duree du fondu d'extinction en fin de sequence (secondes).")]
+    public float fadeOutTime = 4f;
+
     [Tooltip("Demarrer automatiquement en mode Play.")]
     public bool playOnStart = true;
 
@@ -85,7 +88,28 @@ public sealed class ProjectorTimeline : MonoBehaviour
     public void Stop()
     {
         _running = false;
+        AllOff();
         RestoreMovements();
+    }
+
+    private void AllOff()
+    {
+        int n = lyres != null ? lyres.Length : 0;
+        for (int i = 0; i < n; i++)
+        {
+            if (lyres[i] == null) continue;
+            lyres[i].dimmer = 0f;
+            lyres[i].strobe = 0f;
+            lyres[i].white = 0f;
+            lyres[i].color = Color.black;
+        }
+        if (projector != null)
+        {
+            projector.dimmer = 0f;
+            projector.white = 0f;
+            projector.color = Color.black;
+            projector.isOn = false;
+        }
     }
 
     private void Update()
@@ -112,7 +136,7 @@ public sealed class ProjectorTimeline : MonoBehaviour
 
         // --- Fondu d'entree/sortie sur les 2 premieres/dernieres sec ---- //
         float fadeIn = Mathf.Clamp01(_t / 2f);
-        float fadeOut = loop ? 1f : Mathf.Clamp01((duree - _t) / 2f);
+        float fadeOut = loop ? 1f : Mathf.Clamp01((duree - _t) / Mathf.Max(0.1f, fadeOutTime));
         float dim = fadeIn * fadeOut;
 
         // --- Diagonale : pan ET tilt bougent ENSEMBLE ------------------- //

@@ -1278,8 +1278,9 @@ MonoBehaviour:
   - {fileID: 8771463}
   - {fileID: 1595682538}
   projector: {fileID: 1382622168}
-  duration: 30
-  loop: 1
+  duration: 36
+  loop: 0
+  fadeOutTime: 4
   playOnStart: 1
   sweepCycles: 3
   panAmplitude: 0.35

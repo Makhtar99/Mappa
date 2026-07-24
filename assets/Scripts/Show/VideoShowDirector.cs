@@ -22,7 +22,7 @@ public sealed class VideoShowDirector : MonoBehaviour
     private float _t, _rot, _rotDir = 1f, _pump, _flash, _shake, _sparkle, _zoom = 1f;
 
     private int _scene = -1, _reqScene = -1, _lastScene = -1;
-    private float _reqTime = -99f;
+    private float _reqTime = -99f, _reqWeight = 1f;
 
     private float _ar, _ag, _ab, _br, _bg, _bb;
     private static readonly float[][] Palettes =
@@ -70,7 +70,9 @@ public sealed class VideoShowDirector : MonoBehaviour
         DetectKick(dt);
         UpdateGlobals(dt);
 
-        int active = (Time.time - _reqTime < 0.1f) ? _reqScene : -1;
+        bool on = Time.time - _reqTime < 0.1f;
+        int active = on ? _reqScene : -1;
+        float bright = on ? Mathf.Clamp01(_reqWeight) : 0f;
         if (active != _lastScene) { if (active >= 0) Cut(); _lastScene = active; }
         _scene = active;
 
@@ -82,7 +84,7 @@ public sealed class VideoShowDirector : MonoBehaviour
         UpdateShocks(dt);
         UpdateParticles(dt);
 
-        _c.BlitToField(f, gain, _rot, _zoom, ShakeX(), ShakeY());
+        _c.BlitToField(f, gain * bright, _rot, _zoom, ShakeX(), ShakeY());
     }
 
     private float ShakeX() => (Mathf.PerlinNoise(_t * 40f, 0f) - 0.5f) * 2f * _shake * _wS;
@@ -151,9 +153,9 @@ public sealed class VideoShowDirector : MonoBehaviour
 
     public void Request(int scene, float weight)
     {
-        if (weight <= 0.001f) return;
         _reqScene = scene;
         _reqTime = Time.time;
+        _reqWeight = weight;
     }
 
     private void Cut()
