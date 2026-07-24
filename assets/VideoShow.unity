@@ -152,12 +152,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LyreController
   emitter: {fileID: 52113459}
   baseEntityId: 50
-  pan: 0.5
-  tilt: 0.5
+  pan: 0.7551389
+  tilt: 0.7551389
   speed: 0
-  dimmer: 1
+  dimmer: 0
   strobe: 0
-  color: {r: 1, g: 0, b: 0, a: 1}
+  color: {r: 0, g: 0, b: 0, a: 1}
   white: 0
   macro: 0
 --- !u!114 &8771464
@@ -167,7 +167,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 8771462}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 60aa9a2088e304a19825b56cae8cbd1e, type: 3}
   m_Name: 
@@ -362,6 +362,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 688168845}
+  - component: {fileID: 688168846}
   m_Layer: 0
   m_Name: Projecteurs
   m_TagString: Untagged
@@ -388,9 +389,30 @@ Transform:
   - {fileID: 1514532104}
   - {fileID: 8771466}
   - {fileID: 1595682541}
-  - {fileID: 1617421353}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!95 &688168846
+Animator:
+  serializedVersion: 7
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 688168844}
+  m_Enabled: 1
+  m_Avatar: {fileID: 0}
+  m_Controller: {fileID: 0}
+  m_CullingMode: 0
+  m_UpdateMode: 0
+  m_ApplyRootMotion: 0
+  m_LinearVelocityBlending: 0
+  m_StabilizeFeet: 0
+  m_AnimatePhysics: 0
+  m_WarningMessage: 
+  m_HasTransformHierarchy: 1
+  m_AllowConstantClipSamplingOptimization: 1
+  m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
 --- !u!1 &801930415
 GameObject:
   m_ObjectHideFlags: 0
@@ -706,12 +728,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LyreController
   emitter: {fileID: 52113459}
   baseEntityId: 10
-  pan: 0.5
-  tilt: 0.5
+  pan: 0.7551389
+  tilt: 0.7551389
   speed: 0
-  dimmer: 1
+  dimmer: 0
   strobe: 0
-  color: {r: 1, g: 0, b: 0, a: 1}
+  color: {r: 0, g: 0, b: 0, a: 1}
   white: 0
   macro: 0
 --- !u!114 &1093208578
@@ -721,7 +743,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1093208576}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 60aa9a2088e304a19825b56cae8cbd1e, type: 3}
   m_Name: 
@@ -904,10 +926,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ProjectorController
   emitter: {fileID: 52113459}
   baseEntityId: 1
-  isOn: 1
-  color: {r: 1, g: 1, b: 1, a: 1}
+  isOn: 0
+  color: {r: 0, g: 0, b: 0, a: 1}
   white: 0
-  dimmer: 1
+  dimmer: 0
 --- !u!114 &1382622169
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -976,12 +998,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LyreController
   emitter: {fileID: 52113459}
   baseEntityId: 30
-  pan: 0.5
-  tilt: 0.5
+  pan: 0.24486113
+  tilt: 0.24486113
   speed: 0
-  dimmer: 1
+  dimmer: 0
   strobe: 0
-  color: {r: 1, g: 0, b: 0, a: 1}
+  color: {r: 0, g: 0, b: 0, a: 1}
   white: 0
   macro: 0
 --- !u!114 &1514532102
@@ -991,7 +1013,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1514532100}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 60aa9a2088e304a19825b56cae8cbd1e, type: 3}
   m_Name: 
@@ -1070,12 +1092,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LyreController
   emitter: {fileID: 52113459}
   baseEntityId: 70
-  pan: 0.5
-  tilt: 0.5
+  pan: 0.24486113
+  tilt: 0.24486113
   speed: 0
-  dimmer: 1
+  dimmer: 0
   strobe: 0
-  color: {r: 1, g: 0, b: 0, a: 1}
+  color: {r: 0, g: 0, b: 0, a: 1}
   white: 0
   macro: 0
 --- !u!114 &1595682539
@@ -1085,7 +1107,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1595682537}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 60aa9a2088e304a19825b56cae8cbd1e, type: 3}
   m_Name: 
@@ -1228,65 +1250,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 50, y: -30, z: 0}
---- !u!1 &1617421352
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1617421353}
-  - component: {fileID: 1617421354}
-  m_Layer: 0
-  m_Name: Timeline Projecteurs
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &1617421353
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1617421352}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 688168845}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1617421354
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1617421352}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 98fd32a2bf75432282aab665a7d8e1d7, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ProjectorTimeline
-  lyres:
-  - {fileID: 1093208577}
-  - {fileID: 1514532101}
-  - {fileID: 8771463}
-  - {fileID: 1595682538}
-  projector: {fileID: 1382622168}
-  duration: 30
-  loop: 1
-  playOnStart: 1
-  sweepCycles: 3
-  panAmplitude: 0.35
-  tiltAmplitude: 0.35
-  tiltCenter: 0.5
-  colorPeriod: 4
-  alternateByLyre: 1
 --- !u!1 &2138836906
 GameObject:
   m_ObjectHideFlags: 0
@@ -1297,6 +1260,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2138836908}
   - component: {fileID: 2138836907}
+  - component: {fileID: 2138836909}
   m_Layer: 0
   m_Name: Show
   m_TagString: Untagged
@@ -1318,7 +1282,9 @@ PlayableDirector:
   m_WrapMode: 2
   m_DirectorUpdateMode: 1
   m_InitialTime: 0
-  m_SceneBindings: []
+  m_SceneBindings:
+  - key: {fileID: 0}
+    value: {fileID: 801930422}
   m_ExposedReferences:
     m_References: []
 --- !u!4 &2138836908
@@ -1336,6 +1302,19 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2138836909
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2138836906}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 18ecc12eb1c6e1941adebdceb217db2b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ProjectorShowStopper
+  projectorsRoot: {fileID: 688168844}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

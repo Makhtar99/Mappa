@@ -61,6 +61,15 @@ public static class VideoShowBuilder
             pos += slot;
         }
 
+        // Piste projecteurs : un seul clip qui couvre toute la duree du show.
+        // Quand la Timeline se termine, OnBehaviourPause du clip eteint les
+        // projecteurs -> ils s'arretent en meme temps que le show.
+        var projTrack = tl.CreateTrack<ProjectorShowTrack>(null, "Projecteurs");
+        var projClip = projTrack.CreateClip<ProjectorShowClip>();
+        projClip.start = 0;
+        projClip.duration = Duration;
+        projClip.displayName = "Diagonales rouge/blanc";
+
         AssetDatabase.SaveAssets();
 
         var show = GameObject.Find("Show");
@@ -72,26 +81,44 @@ public static class VideoShowBuilder
         director.extrapolationMode = DirectorWrapMode.None;
         EditorUtility.SetDirty(director);
 
-        // Ajoute les projecteurs (Projector + 4 Lyres + Timeline diagonales
-        // rouge/blanc). Ils coexistent avec le design du mur : le
-        // VideoShowDirector pilote le mur (EntityField), les projecteurs ont
-        // leur propre DeviceEmitter et leur propre timeline 30 s.
-        BuildProjecteurs();
+        // Ajoute les projecteurs (Projector + 4 Lyres). Ils coexistent avec le
+        // design du mur : le VideoShowDirector pilote le mur (EntityField), les
+        // projecteurs ont leur propre DeviceEmitter et sont pilotes par la piste
+        // "Projecteurs" de la Timeline principale.
+        var projRoot = BuildProjecteurs();
+
+        // Coupe-circuit : eteint les projecteurs quand la Timeline se termine
+        // (comme le panneau LED). S'abonne a director.stopped.
+        var stopper = show.GetComponent<ProjectorShowStopper>();
+        if (stopper == null) stopper = show.AddComponent<ProjectorShowStopper>();
+        stopper.projectorsRoot = projRoot;
+        EditorUtility.SetDirty(stopper);
 
         EditorUtility.DisplayDialog("Mappa",
-            "VideoShow construit : VideoShowDirector + Timeline (Music 40s-70s + piste Scenes).\n" +
-            "Projecteurs ajoutes : Projector + 4 Lyres + 'Timeline Projecteurs' (diagonales rouge/blanc, 30 s).\n" +
+            "VideoShow construit : VideoShowDirector + Timeline (Music 40s-70s + piste Scenes + piste Projecteurs).\n" +
+            "Projecteurs : Projector + 4 Lyres, pilotes par la piste 'Projecteurs' (diagonales rouge/blanc).\n" +
+            "Les projecteurs s'eteignent automatiquement a la fin de la Timeline.\n" +
             "Ouvre la Timeline sur 'Show' : deplace/allonge les clips d'effet et cale-les sur la waveform.",
             "OK");
     }
 
     // ------------------------------------------------------------------ //
-    // Cree le rig de projecteurs et sa timeline, cable sur un DeviceEmitter
-    // dedie. Idempotent : ne recree rien si "Projecteurs" existe deja.
+    // Cree le rig de projecteurs, cable sur un DeviceEmitter dedie. Idempotent :
+    // renvoie le rig existant si "Projecteurs" existe deja. Retourne la racine
+    // pour permettre au ProjectorShowStopper de la referencer.
     // ------------------------------------------------------------------ //
-    private static void BuildProjecteurs()
+    private static GameObject BuildProjecteurs()
     {
-        if (GameObject.Find("Projecteurs") != null) return; // deja construit
+        var existing = GameObject.Find("Projecteurs");
+        if (existing != null)
+        {
+            // Deja construit : on nettoie tout ancien ProjectorTimeline autonome
+            // (MonoBehaviour qui bouclait a l'infini et gardait les projecteurs
+            // allumes apres la fin de la Timeline). Desormais la sequence est
+            // pilotee par la piste "Projecteurs" + eteinte par le stopper.
+            RemoveLegacyProjectorTimelines();
+            return existing;
+        }
 
         var root = new GameObject("Projecteurs");
 
@@ -137,18 +164,80 @@ public static class VideoShowBuilder
             lyres[i] = lyre;
         }
 
-        // Timeline des projecteurs : 30 s de diagonales rouge/blanc.
-        var tlGo = new GameObject("Timeline Projecteurs");
-        tlGo.transform.SetParent(root.transform, false);
-        var pt = tlGo.AddComponent<ProjectorTimeline>();
-        pt.lyres = lyres;
-        pt.projector = projector;
-        pt.duration = 30f;
-        pt.loop = true;
-        pt.playOnStart = true;
-        pt.alternateByLyre = true;
+        // La sequence des projecteurs (diagonales rouge/blanc) n'est PLUS un
+        // MonoBehaviour autonome qui boucle : elle est desormais pilotee par la
+        // piste "Projecteurs" (ProjectorShowTrack) de la Timeline principale.
+        // Le clip resout lui-meme ces LyreController / ProjectorController dans
+        // la scene, et les eteint quand la Timeline se termine.
 
         EditorUtility.SetDirty(root);
+        return root;
+    }
+
+    // ------------------------------------------------------------------ //
+    // Repare une scene VideoShow deja construite AVANT l'ajout de la piste
+    // Timeline + stopper : supprime le(s) ProjectorTimeline autonome(s) et
+    // garantit qu'un ProjectorShowStopper est cable sur le PlayableDirector.
+    // A lancer sur la scene ouverte, sans tout reconstruire.
+    // ------------------------------------------------------------------ //
+    [MenuItem("Tools/Mappa/Fix Projecteurs (arret en fin de Timeline)")]
+    public static void FixProjecteurs()
+    {
+        int removed = RemoveLegacyProjectorTimelines();
+
+        var projRoot = GameObject.Find("Projecteurs");
+
+        // Garantit le stopper sur le GameObject qui porte le PlayableDirector.
+        var director = Object.FindFirstObjectByType<PlayableDirector>();
+        bool stopperOk = false;
+        if (director != null)
+        {
+            var stopper = director.GetComponent<ProjectorShowStopper>();
+            if (stopper == null) stopper = director.gameObject.AddComponent<ProjectorShowStopper>();
+            stopper.projectorsRoot = projRoot;
+            EditorUtility.SetDirty(stopper);
+            stopperOk = true;
+        }
+
+        if (director != null)
+        {
+            var scene = director.gameObject.scene;
+            if (scene.IsValid())
+                UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
+        }
+
+        EditorUtility.DisplayDialog("Mappa - Fix Projecteurs",
+            $"ProjectorTimeline autonome(s) supprime(s) : {removed}\n" +
+            (stopperOk
+                ? "ProjectorShowStopper cable sur le PlayableDirector.\n"
+                : "ATTENTION : aucun PlayableDirector trouve dans la scene, stopper non cable.\n") +
+            "Pense a sauvegarder la scene (Ctrl+S).",
+            "OK");
+    }
+
+    // Detruit tous les composants ProjectorTimeline de la scene (et le
+    // GameObject "Timeline Projecteurs" s'il devient vide). Retourne le nombre
+    // de composants supprimes.
+    private static int RemoveLegacyProjectorTimelines()
+    {
+        var legacies = Object.FindObjectsByType<ProjectorTimeline>(
+            FindObjectsInactive.Include, FindObjectsSortMode.None);
+        int count = 0;
+        foreach (var pt in legacies)
+        {
+            if (pt == null) continue;
+            var go = pt.gameObject;
+            Object.DestroyImmediate(pt);
+            count++;
+            // Si le GameObject etait le conteneur dedie et n'a plus que son
+            // Transform, on le supprime aussi pour ne pas laisser un objet vide.
+            if (go != null && go.name == "Timeline Projecteurs"
+                && go.GetComponents<Component>().Length <= 1)
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+        return count;
     }
 }
 #endif
